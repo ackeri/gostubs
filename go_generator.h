@@ -8,19 +8,23 @@
 #include <google/protobuf/compiler/code_generator.h>
 
 using namespace std;
+using google::protobuf::FileDescriptor;
+using google::protobuf::compiler::GeneratorContext;
 
 namespace sapphire_go_generator {
 
 class GoSapphireGenerator : public google::protobuf::compiler::CodeGenerator {
  public:
-  GoSapphireGenerator();
-  ~GoSapphireGenerator();
+  GoSapphireGenerator() {};
+  ~GoSapphireGenerator() {};
 
-  bool Generate(const google::protobuf::FileDescriptor* file,
+  bool Generate(const FileDescriptor* file,
                 const string& parameter,
-                google::protobuf::compiler::GeneratorContext* context,
+                GeneratorContext* context,
                 string* error) const;
 
+  bool GenerateAll(const vector<const FileDescriptor*>& files, const string& parameter, GeneratorContext* generator_context, string * error) const {return false;};
+  bool HasGenerateAll() const { return false; }
  private:
 
 };
