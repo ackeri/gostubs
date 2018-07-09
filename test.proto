@@ -1,0 +1,25 @@
+syntax = "proto2";
+
+// This is a test comment on testobj
+service testobj {
+	rpc func1 (msg1) returns (msg2) {}
+	rpc func2 (msg2) returns (msg3) {}
+	rpc func3 (msg2) returns (msg1) {}
+}
+
+// This is a test comment on arg1
+message msg1 {
+	required string name = 1;
+	required int32 id = 2;
+	required double floatingvalue = 3;
+}
+
+message msg2 {
+	optional string optstring = 1;
+	repeated string liststring = 2;
+	map<int32, string> idtostringmap = 3;
+}
+
+message msg3 {
+	required msg2 nested = 1;
+}
