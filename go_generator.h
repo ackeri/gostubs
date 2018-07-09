@@ -23,8 +23,15 @@ class GoSapphireGenerator : public google::protobuf::compiler::CodeGenerator {
                 GeneratorContext* context,
                 string* error) const;
 
-  bool GenerateAll(const vector<const FileDescriptor*>& files, const string& parameter, GeneratorContext* generator_context, string * error) const {return false;};
-  bool HasGenerateAll() const { return false; }
+  bool GenerateAll(const vector<const FileDescriptor*>& files, const string& parameter, GeneratorContext* context, string * error) const {
+	for(auto f : files) {
+      if(!Generate(f, parameter, context, error)) {
+        return false;
+      }
+    }
+	return true;
+  };
+  bool HasGenerateAll() const { return true; }
  private:
 
 };
