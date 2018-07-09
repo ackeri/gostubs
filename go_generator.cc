@@ -21,7 +21,9 @@
 
 using google::protobuf::FileDescriptor;
 using google::protobuf::MethodDescriptor;
+using google::protobuf::Descriptor;
 using google::protobuf::FieldDescriptor;
+using google::protobuf::SourceLocation;
 using google::protobuf::io::ZeroCopyOutputStream;
 using google::protobuf::io::OstreamOutputStream;
 using google::protobuf::io::Printer;
@@ -43,6 +45,9 @@ typedef vector<string> StringVector;
 typedef tuple<string, string> StringPair;
 typedef set<StringPair> StringPairSet;
 
+//TODO check input is not reserved keyword in golang
+//TODO Camelcase all the names (because the go protobuf compiler does)
+
 // Map from protobuf type (from fielddescriptor)
 // to in language type for primitives
 map<FieldDescriptor::Type,string> typenames = {
@@ -56,39 +61,65 @@ map<FieldDescriptor::Type,string> typenames = {
   {FieldDescriptor::Type::TYPE_BOOL, "bool"},
   {FieldDescriptor::Type::TYPE_STRING, "string"},
   {FieldDescriptor::Type::TYPE_GROUP, "(DEPRECEATED PROTOBUF TYPE GROUP)"},
-  {FieldDescriptor::Type::TYPE_MESSAGE, ""}, //TODO
-  {FieldDescriptor::Type::TYPE_BYTES, ""}, //TODO
+  {FieldDescriptor::Type::TYPE_MESSAGE, "TODO_MESSAGE"}, //TODO
+  {FieldDescriptor::Type::TYPE_BYTES, "[]byte"},  //TODO: verify this is correct
   {FieldDescriptor::Type::TYPE_UINT32, "uint32"},
-  {FieldDescriptor::Type::TYPE_ENUM, ""}, //TODO
+  {FieldDescriptor::Type::TYPE_ENUM, "TODO_ENUM"}, //TODO
   {FieldDescriptor::Type::TYPE_SFIXED32, "int32"},
   {FieldDescriptor::Type::TYPE_SFIXED64, "int64"},
   {FieldDescriptor::Type::TYPE_SINT32, "int32"},
   {FieldDescriptor::Type::TYPE_SINT64, "int64"}
 };
 
-string GetGoType(const FieldDescriptor* d) {
-  if(d->is_repeated()) {
-    return "[]" + typenames[d->type()]; 
-  } else if(d->is_map()) {
-    return "";//"map[" + "key" + "]" + "value";
-  } else {
-    return typenames[d->type()];
+string GetGoPrimitiveType(const FieldDescriptor* d) {
+  switch(d->type()) {
+    case FieldDescriptor::Type::TYPE_GROUP:
+      throw "Depreceated protobuf type group unsupported";
+    case FieldDescriptor::Type::TYPE_MESSAGE:
+	  return "*" + d->message_type()->name();
+	default:
+      return typenames[d->type()];
   }
 }
 
-void GetMethod(Printer* out, const MethodDescriptor* method) {
+string GetGoType(const FieldDescriptor* d) {
+  //TODO how is protobuf oneof implemented?
+  if(d->is_map()) {
+    const Descriptor* entry = d->message_type();
+    string out = "map[";
+    out += GetGoType(entry->field(0)) + "]" + GetGoType(entry->field(1));
+    return out;
+  } else if(d->is_repeated()) {
+    //if(d->message_type() && d->message_type()->options().has_map_entry()) {
+    //  return "WE GOT EM";
+    //} else {
+      return "[]" + GetGoPrimitiveType(d);
+    //}
+  } else {
+    return GetGoPrimitiveType(d);
+  }
+}
+
+void GenerateMethod(Printer* out, const MethodDescriptor* method) {
+  if(method->client_streaming() || method->server_streaming) {
+    throw "streaming services not supported";
+  }
   StringMap methoddef_dict;
   methoddef_dict["name"] = method->service()->name();
   methoddef_dict["method"] = method->name();
 
-  // Function Header
-  // TODO something like PrintAllComments(method->GetAllComments(), out);
+  // Documentation
+  SourceLocation sl;
+  if(method->GetSourceLocation(&sl)) {
+    methoddef_dict["comment"] = sl.leading_comments;
+    out->Print(methoddef_dict, "/*$comment$*/\n");
+  }
   out->Print(methoddef_dict, "func (o $name$) $method$(");
 
+  // Function Header
   auto args = method->input_type();
   for(int i = 0; i < args->field_count(); ++i) {
     const FieldDescriptor* d = args->field(i);
-	//TODO: d->is_optional() d->is_repeated() d->is_map()
     methoddef_dict["argname"] = d->name();
     methoddef_dict["type"] = GetGoType(d);
 	methoddef_dict["comma"] = (i == args->field_count() - 1) ? "" : ", ";
@@ -109,7 +140,7 @@ void GetMethod(Printer* out, const MethodDescriptor* method) {
 
   //create protobuf object, pack it
   methoddef_dict["argmsg"] = args->name();
-  out->Print(methoddef_dict, "msg := $argmsg${\n");
+  out->Print(methoddef_dict, "msg := &$argmsg${\n");
   out->Indent();
   for(int i = 0; i < args->field_count(); ++i) {
     const FieldDescriptor* d = args->field(i);
@@ -119,52 +150,62 @@ void GetMethod(Printer* out, const MethodDescriptor* method) {
   out->Outdent();
   out->Print("}\n");
   //TODO check err
-  out->Print("msgbuffer, err := proto.Marshal(msg)\n\n");
+  out->Print("msgbuffer, _ := proto.Marshal(msg)\n\n");
 
   //call kernel interface
   //TODO call kernel interface to make rpc
-  out->Print("retmsgbuffer := makeRPC(msgbuffer)\n");
+  out->Print("_ = msgbuffer //suppresses warning\n");
+  out->Print("retmsgbuffer := make([]byte, 0)\n\n");//makeRPC(msgbuffer)\n\n");
 
   //unpack return value
   methoddef_dict["ret"] = ret->name();
-  out->Print(methoddef_dict, "retmsg := &pb.$ret${}\n");
-  out->Print("err = proto.Unmarshal(retmsgbuffer, retmsg\n");
-  out->Print("return (");
+  out->Print(methoddef_dict, "retmsg := &$ret${}\n");
+  out->Print("_ = proto.Unmarshal(retmsgbuffer, retmsg)\n");
+  out->Print("return ");
   for(int i = 0; i < ret->field_count(); ++i) {
     const FieldDescriptor* d = ret->field(i);
 	methoddef_dict["retname"] = d->name();
 	methoddef_dict["comma"] = (i == ret->field_count() - 1) ? "" : ", ";
 	out->Print(methoddef_dict, "retmsg.$retname$$comma$");
   }
-  out->Print(")\n");
+  out->Print("\n");
   
   out->Outdent();
   out->Print("}\n\n");
 }
 
-void GetSapphireStub(GeneratorContext* context, string name, const FileDescriptor* file) {
+void GenerateSapphireStub(GeneratorContext* context, string name, const FileDescriptor* file) {
   
-  ZeroCopyOutputStream* zcos = context->Open(name + ".pb.go");; 
+  ZeroCopyOutputStream* zcos = context->Open("Sapphire" + name + ".pb.go");; 
   auto out = new Printer(zcos, '$');
 
   // Package statement
-  //TODO fill in
+  // TODO include protobuf package structure, and nested message imports
+  out->Print("package $pkg$\n\n", "pkg", name);
+  out->Print("import \"github.com/golang/protobuf/proto\"\n\n");
 
   for(int i = 0; i < file->service_count(); ++i) {
     auto service = file->service(i);
+    StringMap typedef_dict;
+
+	// Documentation
+	SourceLocation sl;
+	if(service->GetSourceLocation(&sl)) {
+      typedef_dict["comment"] = sl.leading_comments;
+      out->Print(typedef_dict, "/*$comment$*/\n");
+	}
 
     // Type Definition
-    StringMap typedef_dict;
     typedef_dict["name"] = service->name();
     out->Print(typedef_dict, "type $name$ struct {\n");
     out->Indent();
-    out->Print("oid uint64\n");
+    out->Print("Oid uint64\n");
     out->Outdent();
     out->Print("}\n\n");
 
 	// Each method implementation
     for(int j = 0; j < service->method_count(); ++j) {
-      GetMethod(out, service->method(j));
+      GenerateMethod(out, service->method(j));
     }
   }
 
@@ -198,10 +239,13 @@ bool GoSapphireGenerator::Generate(const FileDescriptor* file,
  
   // Output stubs
   try {
-    GetSapphireStub(context, base, file);
+    GenerateSapphireStub(context, base, file);
   } catch (std::exception ex) {
     *error = ex.what();
-	return true;
+	return false;
+  } catch (string ex) {
+    *error = ex;
+	return false;
   }
   return true;
 }
