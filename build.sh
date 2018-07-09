@@ -4,7 +4,7 @@ g++ go_generator.cc go_plugin.cc -std=c++11 `pkg-config --cflags --libs protobuf
 
 #install
 chmod +x protoc-gen-go_sapphire
-cp protoc-gen-go_sapphire /usr/local/bin/
+sudo cp protoc-gen-go_sapphire /usr/local/bin/
 
 
 #run
