@@ -101,7 +101,7 @@ string GetGoType(const FieldDescriptor* d) {
 }
 
 void GenerateMethod(Printer* out, const MethodDescriptor* method) {
-  if(method->client_streaming() || method->server_streaming) {
+  if(method->client_streaming() || method->server_streaming()) {
     throw "streaming services not supported";
   }
   StringMap methoddef_dict;
