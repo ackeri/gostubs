@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+// This is a test comment on testobj
+service Testobj {
+	/* This is a test comment on func1 */
+	rpc func1 (Msg1) returns (Msg1b) {}
+
+	// This is a multiline test
+	// Comment on func2
+	rpc func2 (Msg1b) returns (Msg1c) {}
+
+	/* This is a different test
+	comment on func3 */
+	rpc func3 (Msg1c) returns (Msg2) {}
+
+	rpc func4 (Msg2) returns (Msg2b) {}
+	rpc func5 (Msg2b) returns (Msg3) {}
+}
+
+/* This is a test comment shouldn't be included */
+message Msg1 {
+	string Name = 1;
+}
+
+message Msg1b {
+	double d = 1;
+}
+
+message Msg1c {
+	uint32 id = 1;
+}
+
+
+message Msg2 {
+	repeated string Liststring = 2;
+}
+
+message Msg2b {
+	map<int32, string> Idtostringmap = 3;
+}
+
+message Msg3 {
+	Msg2 Nested = 1;
+}

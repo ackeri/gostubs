@@ -10,8 +10,13 @@ sudo cp bin/protoc-gen-java_sapphire /usr/local/bin/ && \
 
 #run code generator
 mkdir -p javaoutput
-protoc --java_out=javaoutput gotest.proto && \
-protoc --java_sapphire_out=javaoutput gotest.proto && \
+protoc --java_out=javaoutput javatest.proto && \
+protoc --java_sapphire_out=javaoutput javatest.proto && \
+
+#build and run java test
+cd javaoutput
+javac test.java
+java test
 
 echo "done"
 

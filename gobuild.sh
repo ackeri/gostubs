@@ -10,14 +10,15 @@ sudo cp bin/protoc-gen-go_sapphire /usr/local/bin/ && \
 
 #run code generator
 mkdir -p gooutput
-protoc --go_out=gooutput gotest.proto && \
-protoc --go_sapphire_out=gooutput gotest.proto && \
+protoc --go_out=gooutput test.proto && \
+protoc --go_sapphire_out=gooutput test.proto && \
 
 #place in gopath so we can run
 mkdir -p $GOPATH/src/CodeGenTest/gotest && \
 mkdir -p $GOPATH/src/CodeGenTest/main && \
-cp -r gooutput/* $GOPATH/src/CodeGenTest/gotest && \
-cp test.go $GOPATH/src/CodeGenTest/main/test.go && \
+cp gooutput/gotest.pb.go $GOPATH/src/CodeGenTest/gotest && \
+cp gooutput/Sapphiregotest.pb.go $GOPATH/src/CodeGenTest/gotest && \
+cp gooutput/test.go $GOPATH/src/CodeGenTest/main/test.go && \
 
 #build and run go application
 go install CodeGenTest/main && \

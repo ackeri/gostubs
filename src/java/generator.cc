@@ -21,6 +21,7 @@ typedef map<string, string> StringMap;
 
 //TODO check input is not reserved keyword in java
 //TODO check name compatability with java->proto conversion tool
+//TODO java doesn't support unsigned int types
 
 // Map from protobuf type (from fielddescriptor)
 // to in language type for primitives
@@ -28,16 +29,16 @@ map<FieldDescriptor::Type,string> typenames = {
   {FieldDescriptor::Type::TYPE_DOUBLE, "double"},
   {FieldDescriptor::Type::TYPE_FLOAT, "float"},
   {FieldDescriptor::Type::TYPE_INT64, "long"},
-  {FieldDescriptor::Type::TYPE_UINT64, "unsigned long"},
+  {FieldDescriptor::Type::TYPE_UINT64, "long"},
   {FieldDescriptor::Type::TYPE_INT32, "int"},
-  {FieldDescriptor::Type::TYPE_FIXED64, "unsigned long"},
-  {FieldDescriptor::Type::TYPE_FIXED32, "unsinged int"},
+  {FieldDescriptor::Type::TYPE_FIXED64, "long"},
+  {FieldDescriptor::Type::TYPE_FIXED32, "int"},
   {FieldDescriptor::Type::TYPE_BOOL, "boolean"},
   {FieldDescriptor::Type::TYPE_STRING, "String"},
   {FieldDescriptor::Type::TYPE_GROUP, "(DEPRECEATED PROTOBUF TYPE GROUP)"},
   {FieldDescriptor::Type::TYPE_MESSAGE, "TODO_MESSAGE"}, //TODO
   {FieldDescriptor::Type::TYPE_BYTES, "char[]"},  //TODO: verify this is correct
-  {FieldDescriptor::Type::TYPE_UINT32, "unsigned int"},
+  {FieldDescriptor::Type::TYPE_UINT32, "int"},
   {FieldDescriptor::Type::TYPE_ENUM, "TODO_ENUM"}, //TODO
   {FieldDescriptor::Type::TYPE_SFIXED32, "int"},
   {FieldDescriptor::Type::TYPE_SFIXED64, "long"},
@@ -120,16 +121,16 @@ void GenerateMethod(Printer* out, const MethodDescriptor* method) {
       out->Print(methoddict, "msg.set$argname$($argname$);\n");
     }
   }
-  out->Print("$argmsg$ msgbuffer = msg.build()\n\n");
+  out->Print(methoddict, "$argmsg$ msgbuffer = msg.build();\n\n");
 
   //call kernel interface
   //TODO call kernel interface to make rpc 
   methoddict["ret"] = ret->name();
-  out->Print("$ret$ retmsg = $ret$.getDefaultInstance()\n\n");//makeRPC(msgbuffer)\n\n");
+  out->Print(methoddict, "$ret$ retmsg = $ret$.getDefaultInstance();\n\n");
 
   //unpack return value
   methoddict["retname"] = ret->field(0)->name();
-  out->Print(methoddict, "return retmsg.get$retname$();");
+  out->Print(methoddict, "return retmsg.get$retname$();\n");
   
   out->Outdent();
   out->Print("}\n\n");
