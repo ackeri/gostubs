@@ -1,24 +1,18 @@
 
-void Generator::GenerateMethod(const MethodDescriptor* md, Printer* out) {
-
-}
-
-
-void Generator::GenerateMethodHeader(const MethodDescriptor* md, Printer* out) {
+void GoGenerator::GenerateMethodHeader(const MethodDescriptor* md, Printer* out) {
   if(method->client_streaming() || method->server_streaming()) {
     throw "streaming services not supported";
   }
   StringMap methoddef_dict;
-  methoddef_dict["name"] = method->service()->name();
+  methoddef_dict["host"] = method->service()->name();
   methoddef_dict["method"] = method->name();
 
   // Documentation
   SourceLocation sl;
   if(method->GetSourceLocation(&sl)) {
-    methoddef_dict["comment"] = sl.leading_comments;
-    out->Print(methoddef_dict, "/*$comment$*/\n");
+    out->Print("/*$comment$*/\n", "comment", sl.leading_comments);
   }
-  out->Print(methoddef_dict, "func (o $name$) $method$(");
+  out->Print(methoddef_dict, "func (o $host$) $method$(");
 
   // Function Header
   auto args = method->input_type();
@@ -43,7 +37,7 @@ void Generator::GenerateMethodHeader(const MethodDescriptor* md, Printer* out) {
 }
 
 
-void Generator::GenerateMethodFooter(const MethodDescriptor* md, Printer* out) {
+void GoGenerator::GenerateMethodFooter(const MethodDescriptor* md, Printer* out) {
   out->Print("\n");
   
   out->Outdent();
@@ -52,18 +46,23 @@ void Generator::GenerateMethodFooter(const MethodDescriptor* md, Printer* out) {
 
 
 
-void Generator::GeneratePackHeader(const Descriptor* d, Printer* out) {
-
+void GoGenerator::GeneratePackHeader(const Descriptor* d, Printer* out) {
+  out->Print(methoddef_dict, "msg := &$argmsg${\n", "argmsg", d->name());
+  out->Indent();
 }
 
 
 void Generator::GeneratePackFooter(const Descriptor* d, Printer* out) {
-
+  out->Outdent();
+  out->Print("}\n");
+  //TODO check err
+  out->Print("msgbuffer, _ := proto.Marshal(msg)\n\n");
 }
 
 
 void Generator::GeneratePackField(const FieldDescriptor* fd, Printer* out) {
-
+	//protofield: value
+    out->Print(methoddef_dict, "$name$: $name$,\n", "name", d->name());
 }
 
 
