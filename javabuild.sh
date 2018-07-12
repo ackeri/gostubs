@@ -14,9 +14,9 @@ protoc --java_out=javaoutput javatest.proto && \
 protoc --java_sapphire_out=javaoutput javatest.proto && \
 
 #build and run java test
-cd javaoutput
-javac test.java
-java test
+cd javaoutput && \
+javac -cp ".:./javaprotobuf.jar" test.java && \
+java -cp ".:./javaprotobuf.jar" test && \
 
 echo "done"
 
