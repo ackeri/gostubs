@@ -13,39 +13,10 @@ using google::protobuf::compiler::GeneratorContext;
 
 namespace sapphire_go_generator {
 
-class Generator : public google::protobuf::compiler::CodeGenerator {
+class GoSapphireGenerator : public google::protobuf::compiler::CodeGenerator {
  public:
-  Generator() {};
-  ~Generator() {};
-
-  string MethodToProto(MethodDescriptor* md);
-  string ProtoToMethod(string id);
-  
-  string StructToProto(Descriptor* d);
-  string ProtoToStruct(string id);
-
-  string FieldToProto(FieldDescriptor* md);
-  string ProtoToField(string id);
-
-  void GenerateType(const FieldDescriptor* fd);
-
-  void GenerateMethod(const MethodDescriptor* md, Printer* out);
-  void GenerateMethodHeader(const MethodDescriptor* md, Printer* out);
-  void GenerateMethodFooter(const MethodDescriptor* md, Printer* out);
-  
-  void GeneratePackHeader(const Descriptor* d, Printer* out);
-  void GeneratePackFooter(const Descriptor* d, Printer* out);
-  void GeneratePackField(const FieldDescriptor* fd, Printer* out);
-
-  void GenerateUnpackHeader(const Descriptor* d, Printer* out);
-  void GenerateUnpackFooter(const Descriptor* d, Printer* out);
-  void GenerateUnpackField(const FieldDescriptor* fd, Printer* out);
-
-  void GenerateKernelCall(const MethodDescriptor* md, Printer* out);
-
-  void GenerateForFile(const FileDescriptor* fd);
-  void GenerateFileHeader(const FileDescriptor* fd);
-  void GenerateFileFooter(const FileDescriptor* fd);
+  GoSapphireGenerator() {};
+  ~GoSapphireGenerator() {};
 
   void GenerateStubs(GeneratorContext* context);
 
