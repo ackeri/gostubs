@@ -3,10 +3,10 @@
 package main
 
 import "fmt"
-import "CodeGenTest/test"
+import "CodeGenTest/gotest"
 
 func main() {
 	fmt.Printf("Hello\n")
-	t := test.Testobj {Oid: 4}
+	t := gotest.Testobj {Oid: 4}
 	fmt.Printf("%d", t.Oid)
 }
