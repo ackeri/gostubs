@@ -9,11 +9,13 @@ sudo cp bin/protoc-gen-java_sapphire /usr/local/bin/ && \
 
 
 #run code generator
+echo "generating code" && \
 mkdir -p javaoutput
 protoc --java_out=javaoutput javatest.proto && \
 protoc --java_sapphire_out=javaoutput javatest.proto && \
 
 #build and run java test
+echo "running code" && \
 cd javaoutput && \
 javac -cp ".:./javaprotobuf.jar" test.java && \
 java -cp ".:./javaprotobuf.jar" test && \

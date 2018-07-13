@@ -14,11 +14,11 @@ protoc --go_out=gooutput test.proto && \
 protoc --go_sapphire_out=gooutput test.proto && \
 
 #place in gopath so we can run
-mkdir -p $GOPATH/src/CodeGenTest/gotest && \
+mkdir -p $GOPATH/src/CodeGenTest/test && \
 mkdir -p $GOPATH/src/CodeGenTest/main && \
-cp gooutput/gotest.pb.go $GOPATH/src/CodeGenTest/gotest && \
-cp gooutput/Sapphiregotest.pb.go $GOPATH/src/CodeGenTest/gotest && \
-cp gooutput/test.go $GOPATH/src/CodeGenTest/main/test.go && \
+cp gooutput/test.pb.go $GOPATH/src/CodeGenTest/test && \
+cp gooutput/Sapphiretest.pb.go $GOPATH/src/CodeGenTest/test && \
+cp gooutput/test.go $GOPATH/src/CodeGenTest/main && \
 
 #build and run go application
 go install CodeGenTest/main && \

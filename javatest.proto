@@ -15,6 +15,7 @@ service Testobj {
 
 	rpc func4 (Msg2) returns (Msg2b) {}
 	rpc func5 (Msg2b) returns (Msg3) {}
+  //test of trailing comment
 }
 
 /* This is a test comment shouldn't be included */
