@@ -18,6 +18,11 @@ using std::map;
 using std::string;
 typedef map<string, string> StringMap;
 
+string capitalizeFirst(string s) {
+  s[0] = toupper(s[0]);
+  return s;
+}
+
 
 //TODO check input is not reserved keyword in golang
 //TODO Camelcase all the names (because the go protobuf compiler does for public access)
@@ -91,7 +96,7 @@ void GenerateMethod(Printer* out, const MethodDescriptor* method) {
   }
   StringMap methoddict;
   methoddict["name"] = method->service()->name();
-  methoddict["method"] = method->name();
+  methoddict["method"] = capitalizeFirst(method->name());
 
   // Documentation
   SourceLocation sl;
@@ -114,8 +119,8 @@ void GenerateMethod(Printer* out, const MethodDescriptor* method) {
   for(int i = 0; i < ret->field_count(); ++i) {
     const FieldDescriptor* d = ret->field(i);
     methoddict["type"] = GetGoType(d);
-	methoddict["comma"] = (i == ret->field_count() - 1) ? "" : ", ";
-	out->Print(methoddict, "$type$$comma$");
+	  methoddict["comma"] = (i == ret->field_count() - 1) ? "" : ", ";
+  	out->Print(methoddict, "$type$$comma$");
   }
   out->Print(") {\n");
 
@@ -129,7 +134,8 @@ void GenerateMethod(Printer* out, const MethodDescriptor* method) {
   for(int i = 0; i < args->field_count(); ++i) {
     const FieldDescriptor* d = args->field(i);
     methoddict["argname"] = d->name();
-    out->Print(methoddict, "$argname$: $argname$,\n");
+    methoddict["msgfield"] = capitalizeFirst(d->name());
+    out->Print(methoddict, "$msgfield$: $argname$,\n");
   }
   out->Outdent();
   out->Print("}\n");
@@ -148,9 +154,9 @@ void GenerateMethod(Printer* out, const MethodDescriptor* method) {
   out->Print("return ");
   for(int i = 0; i < ret->field_count(); ++i) {
     const FieldDescriptor* d = ret->field(i);
-	methoddict["retname"] = d->name();
-	methoddict["comma"] = (i == ret->field_count() - 1) ? "" : ", ";
-	out->Print(methoddict, "retmsg.$retname$$comma$");
+	  methoddict["retname"] = capitalizeFirst(d->name());
+  	methoddict["comma"] = (i == ret->field_count() - 1) ? "" : ", ";
+  	out->Print(methoddict, "retmsg.$retname$$comma$");
   }
   out->Print("\n");
   
@@ -179,7 +185,7 @@ void GoSapphireGenerator::GenerateSapphireStubs(GeneratorContext* context, strin
     }
 
     // Type Definition
-    typedict["name"] = service->name();
+    typedict["name"] = capitalizeFirst(service->name());
     out->Print(typedict, "type $name$ struct {\n");
     out->Indent();
     out->Print("Oid uint64\n");
