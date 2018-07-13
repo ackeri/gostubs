@@ -1,4 +1,4 @@
-###Building dependencies
+# Building dependencies
 
 Need to have protobuf installed to build (note that protobuf does not have an uninstaller)
 
@@ -11,7 +11,7 @@ make
 sudo make install
 
 
-##Go
+## Go
 
 To run tests, need golang and protoc-gen-go installed
 
@@ -22,7 +22,7 @@ Then running build (and providing your sudo password) will generate the protoc p
 
 ./gobuild.sh
 
-##Java
+## Java
 
 You'll need to install jdk
 Installing java protoc runtime requires using maven, which I don't know how to use, so I build it from source and included the jar in the repository.
