@@ -55,7 +55,7 @@ string GetGoPrimitiveType(const FieldDescriptor* d) {
     case FieldDescriptor::Type::TYPE_GROUP:
       throw "Depreceated protobuf type group unsupported";
     case FieldDescriptor::Type::TYPE_MESSAGE:
-	  return "*" + d->message_type()->name();
+	  return "*" + capitalizeFirst(d->message_type()->name());
 	default:
       return typenames[d->type()];
   }
@@ -111,8 +111,8 @@ void GenerateMethod(Printer* out, const MethodDescriptor* method) {
     const FieldDescriptor* d = args->field(i);
     methoddict["argname"] = d->name();
     methoddict["type"] = GetGoType(d);
-	methoddict["comma"] = (i == args->field_count() - 1) ? "" : ", ";
-	out->Print(methoddict, "$argname$ $type$$comma$");
+  	methoddict["comma"] = (i == args->field_count() - 1) ? "" : ", ";
+  	out->Print(methoddict, "$argname$ $type$$comma$");
   }
   out->Print(") (");
   auto ret = method->output_type();
@@ -128,7 +128,7 @@ void GenerateMethod(Printer* out, const MethodDescriptor* method) {
   out->Indent();
 
   //create protobuf object, pack it
-  methoddict["argmsg"] = args->name();
+  methoddict["argmsg"] = capitalizeFirst(args->name());
   out->Print(methoddict, "msg := &$argmsg${\n");
   out->Indent();
   for(int i = 0; i < args->field_count(); ++i) {
@@ -148,7 +148,7 @@ void GenerateMethod(Printer* out, const MethodDescriptor* method) {
   out->Print("retmsgbuffer := make([]byte, 0)\n\n");//makeRPC(msgbuffer)\n\n");
 
   //unpack return value
-  methoddict["ret"] = ret->name();
+  methoddict["ret"] = capitalizeFirst(ret->name());
   out->Print(methoddict, "retmsg := &$ret${}\n");
   out->Print("_ = proto.Unmarshal(retmsgbuffer, retmsg)\n");
   out->Print("return ");
