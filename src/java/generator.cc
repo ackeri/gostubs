@@ -90,8 +90,8 @@ string GetJavaBoxType(string name, const FieldDescriptor* d) {
     case FieldDescriptor::Type::TYPE_GROUP:
       throw "Depreceated protobuf type group unsupported";
     case FieldDescriptor::Type::TYPE_MESSAGE:
-	  return name + "." + d->message_type()->name();
-	default:
+	    return name + "." + d->message_type()->name();
+    default:
       return boxtypenames[d->type()];
   }
 }
@@ -111,6 +111,21 @@ string GetJavaType(string name, const FieldDescriptor* d) {
   }
 }
 
+void GenerateComments(string comment, Printer* out) {
+  if(comment.length() == 0)
+      return;
+
+  out->Print("/**\n");
+  string::size_type ind = 0;
+  string::size_type next;
+  while((next = comment.find("\n",ind)) != string::npos) {
+    out->Print(" * $line$ \n", "line", comment.substr(ind, next - ind));
+    ind = next + 1;
+  }
+  out->Print(" * $line$ \n", "line", comment.substr(ind));
+  out->Print(" **/\n");
+}
+
 void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
   if(method->client_streaming() || method->server_streaming()) {
     throw "streaming services not supported";
@@ -123,8 +138,7 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
   // Documentation
   SourceLocation sl;
   if(method->GetSourceLocation(&sl)) {
-    methoddict["comment"] = sl.leading_comments;
-    out->Print(methoddict, "/*$comment$*/\n");
+    GenerateComments(sl.leading_comments, out);
   }
 
   // Function Header
@@ -172,13 +186,12 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
 
   //unpack return value
   const FieldDescriptor* d = ret->field(0);
+  methoddict["rettype"] = GetJavaType(name, d);
   methoddict["retname"] = capitalizeFirst(d->name());
   if(d->is_map()) {
-    out->Print(methoddict, "return retmsg.get$retname$Map();\n");
-    //TODO this returns an immutable map
+    out->Print(methoddict, "return new Hash$rettype$(retmsg.get$retname$Map());\n");
   } else if(d->is_repeated()) {
-    out->Print(methoddict, "return retmsg.get$retname$List();\n");
-    //TODO this returns an immutable list
+    out->Print(methoddict, "return new Array$rettype$(retmsg.get$retname$List());\n");
   } else {
     out->Print(methoddict, "return retmsg.get$retname$();\n");
   }
@@ -202,8 +215,7 @@ void JavaSapphireGenerator::GenerateSapphireStubs(GeneratorContext* context, str
     // Documentation
 	  SourceLocation sl;
 	  if(service->GetSourceLocation(&sl)) {
-      typedict["comment"] = sl.leading_comments;
-      out->Print(typedict, "/*$comment$*/\n");
+      GenerateComments(sl.leading_comments, out);
 	  }
 
     // Class Header

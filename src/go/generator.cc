@@ -70,6 +70,21 @@ string GetGoType(const FieldDescriptor* d) {
   }
 }
 
+void GenerateComments(string comment, Printer* out) {
+  if(comment.length() == 0)
+      return;
+
+  out->Print("/**\n");
+  string::size_type ind = 0;
+  string::size_type next;
+  while((next = comment.find("\n",ind)) != string::npos) {
+    out->Print(" * $line$ \n", "line", comment.substr(ind, next - ind));
+    ind = next + 1;
+  }
+  out->Print(" * $line$ \n", "line", comment.substr(ind));
+  out->Print(" **/\n");
+}
+
 void GenerateMethod(Printer* out, const MethodDescriptor* method) {
   if(method->client_streaming() || method->server_streaming()) {
     throw "streaming services not supported";
@@ -81,8 +96,7 @@ void GenerateMethod(Printer* out, const MethodDescriptor* method) {
   // Documentation
   SourceLocation sl;
   if(method->GetSourceLocation(&sl)) {
-    methoddict["comment"] = sl.leading_comments;
-    out->Print(methoddict, "/*$comment$*/\n");
+    GenerateComments(sl.leading_comments, out);
   }
   out->Print(methoddict, "func (o $name$) $method$(");
 
@@ -158,12 +172,11 @@ void GoSapphireGenerator::GenerateSapphireStubs(GeneratorContext* context, strin
     auto service = file->service(i);
     StringMap typedict;
 
-	// Documentation
-	SourceLocation sl;
-	if(service->GetSourceLocation(&sl)) {
-      typedict["comment"] = sl.leading_comments;
-      out->Print(typedict, "/*$comment$*/\n");
-	}
+    // Documentation
+    SourceLocation sl;
+    if(service->GetSourceLocation(&sl)) {
+      GenerateComments(sl.leading_comments, out);
+    }
 
     // Type Definition
     typedict["name"] = service->name();
@@ -173,7 +186,7 @@ void GoSapphireGenerator::GenerateSapphireStubs(GeneratorContext* context, strin
     out->Outdent();
     out->Print("}\n\n");
 
-	// Each method implementation
+    // Each method implementation
     for(int j = 0; j < service->method_count(); ++j) {
       GenerateMethod(out, service->method(j));
     }
