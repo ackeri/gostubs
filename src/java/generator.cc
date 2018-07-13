@@ -144,9 +144,11 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
   // Function Header
   auto ret = method->output_type();
   //TODO: build a new class to support multiple returns?
-  if(ret->field_count() > 1)
-	  throw "multiple returns not supported in Java";
-  methoddict["rettype"] = GetJavaType(name, ret->field(0));
+  if(ret->field_count() == 1) {
+    methoddict["rettype"] = GetJavaType(name, ret->field(0));
+  } else {
+    methoddict["rettype"] = ret->name();
+  }
   out->Print(methoddict,"$rettype$ $method$(");
 
   auto args = method->input_type();
@@ -185,22 +187,61 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
   out->Print(methoddict, "$name$.$ret$ retmsg = $name$.$ret$.getDefaultInstance();\n\n");
 
   //unpack return value
-  const FieldDescriptor* d = ret->field(0);
-  methoddict["rettype"] = GetJavaType(name, d);
-  methoddict["retname"] = capitalizeFirst(d->name());
-  if(d->is_map()) {
-    out->Print(methoddict, "return new Hash$rettype$(retmsg.get$retname$Map());\n");
-  } else if(d->is_repeated()) {
-    out->Print(methoddict, "return new Array$rettype$(retmsg.get$retname$List());\n");
+  if(ret->field_count() == 1) {
+    const FieldDescriptor* d = ret->field(0);
+    methoddict["rettype"] = GetJavaType(name, d);
+    methoddict["retname"] = capitalizeFirst(d->name());
+    if(d->is_map()) {
+        out->Print(methoddict, "return new Hash$rettype$(retmsg.get$retname$Map());\n");
+    } else if(d->is_repeated()) {
+        out->Print(methoddict, "return new Array$rettype$(retmsg.get$retname$List());\n");
+    } else {
+        out->Print(methoddict, "return retmsg.get$retname$();\n");
+    }
+
   } else {
-    out->Print(methoddict, "return retmsg.get$retname$();\n");
+    out->Print(methoddict, "$ret$ retval = new $ret$();\n");
+    for(int i = 0; i < ret->field_count(); ++i) {
+        const FieldDescriptor* d = ret->field(i);
+        methoddict["rettype"] = GetJavaType(name, d);
+        methoddict["retname"] = capitalizeFirst(d->name());
+        if(d->is_map()) {
+            out->Print(methoddict, "retval.$retname$ = new Hash$rettype$(retmsg.get$retname$Map());\n");
+        } else if(d->is_repeated()) {
+            out->Print(methoddict, "retval.$retname$ = new Array$rettype$(retmsg.get$retname$List());\n");
+        } else {
+            out->Print(methoddict, "retval.$retname$ = retmsg.get$retname$();\n");
+        }
+    }
+    out->Print(methoddict, "return retval;\n");
   }
-  
+  out->Outdent();
+  out->Print("}\n\n");
+}
+
+void GenerateReturnType(string name, Printer* out, const MethodDescriptor* method) {
+  const Descriptor* d = method->output_type();
+  if(d->field_count() < 2)
+      return;
+
+  StringMap returndict;
+  returndict["rettype"] = d->name();
+  out->Print(returndict, "static class $rettype$ {\n");
+  out->Indent();
+
+  for(int i = 0; i < d->field_count(); ++i) {
+    const FieldDescriptor* fd = d->field(i);
+    returndict["type"] = GetJavaType(name, fd);
+    returndict["name"] = capitalizeFirst(fd->name()); 
+    out->Print(returndict, "public $type$ $name$;\n");
+  }
+
   out->Outdent();
   out->Print("}\n\n");
 }
 
 void JavaSapphireGenerator::GenerateSapphireStubs(GeneratorContext* context, string name, const FileDescriptor* file) const {
+  name = capitalizeFirst(name);
 
   for(int i = 0; i < file->service_count(); ++i) {	   
     auto service = file->service(i);
@@ -226,7 +267,12 @@ void JavaSapphireGenerator::GenerateSapphireStubs(GeneratorContext* context, str
 
     // Each method implementation
     for(int j = 0; j < service->method_count(); ++j) {
-      GenerateMethod("Javatest", out, service->method(j));
+      GenerateMethod(name, out, service->method(j));
+    }
+
+    // Tuple types for returns
+    for(int j = 0; j < service->method_count(); ++j) {
+      GenerateReturnType(name, out, service->method(j));
     }
 
     out->Outdent();
