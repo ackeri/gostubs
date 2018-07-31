@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 // This is a test comment on testobj
-service Testobj {
+service _method_Testobj {
 	/* This is a test comment on func1 */
 	rpc func1 (Msg1) returns (msg2) {}
 

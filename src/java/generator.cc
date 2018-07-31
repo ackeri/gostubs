@@ -9,6 +9,7 @@
 
 using google::protobuf::FileDescriptor;
 using google::protobuf::MethodDescriptor;
+using google::protobuf::OneofDescriptor;
 using google::protobuf::Descriptor;
 using google::protobuf::FieldDescriptor;
 using google::protobuf::SourceLocation;
@@ -20,6 +21,7 @@ typedef map<string, string> StringMap;
 
 string capitalizeFirst(string s) {
   s[0] = toupper(s[0]);
+	//TODO remove _ and capitalize
   return s;
 }
 
@@ -89,7 +91,7 @@ string GetJavaBoxType(string name, const FieldDescriptor* d) {
   switch(d->type()) {
     case FieldDescriptor::Type::TYPE_GROUP:
       throw "Depreceated protobuf type group unsupported";
-    case FieldDescriptor::Type::TYPE_MESSAGE:
+    case FieldDescriptor::Type::TYPE_MESSAGE: //TODO strip _impl_
 	    return name + "." + d->message_type()->name();
     default:
       return boxtypenames[d->type()];
@@ -98,7 +100,6 @@ string GetJavaBoxType(string name, const FieldDescriptor* d) {
 
 
 string GetJavaType(string name, const FieldDescriptor* d) {
-  //TODO how is protobuf oneof implemented?
   if(d->is_map()) {
     const Descriptor* entry = d->message_type();
     string out = "Map<";
@@ -126,13 +127,87 @@ void GenerateComments(string comment, Printer* out) {
   out->Print(" **/\n");
 }
 
+void GeneratePack(string package, string prefix, Printer* out, const Descriptor* d) {
+	StringMap packdict;
+	packdict["package"] = package;
+	packdict["prefix"] = prefix;
+	packdict["type"] = d->name();
+	packdict["name"] = prefix + d->name();
+
+	out->Print(packdict, "$package$.$type$.Builder msg; {\n");
+	out->Indent();
+
+	out->Print(packdict, "$package$.$type$.Builder builder = new $package$.$type$.newBuilder();\n");
+	if(IsInterface(d)) {
+		const OneofDescriptor* ood = d->oneof_decl(0);
+		//Determine runtime type
+		for(int i = 0; i < ood->field_count(); ++i) {
+			packdict["argname"] = capitalizeFirst(ood->name());
+			packdict["ftype"] = GetJavaType(package, ood->field(i));
+			out->Print(packdict, "if($argname$.getClass().equals($ftype$.class)) {\n");
+			out->Indent();
+			GeneratePack(package, prefix, out, ood->field(i)->message_type());
+			out->Print("builder = msg;\n");
+			out->Outdent();
+			out->Print("}\n");
+		}
+	} else {
+		for(int i = 0; i < d->field_count(); ++i) {
+			const FieldDescriptor* fd = d->field(i);
+			packdict["argname"] = capitalizeFirst(fd->name());
+			packdict["inname"] = fd->name();
+
+			//Recurse to generate more packing code
+			const Descriptor* fieldmessage = fd->message_type();
+			if(fieldmessage) {
+				if(fd->is_map()) {
+					packdict["keytype"] = GetJavaType(package, fieldmessage->field(0));
+					out->Print(packdict, "for($keytype$ key : $inname$.keyset()) {\n");
+					out->Indent();
+					GeneratePack(package, prefix, out, fieldmessage);
+					out->Print(packdict, "builder.put$argname$(msg)\n");
+					out->Outdent();
+					out->Print("}\n");
+				} else if(fd->is_repeated()) {
+					packdict["ftype"] = GetJavaType(package, fd);
+					out->Print(packdict, "for($ftype$ key : $inname$) {\n");
+					out->Indent();
+					GeneratePack(package, prefix, out, fieldmessage);
+					out->Print(packdict, "builder.put$argname$(msg);\n");
+					out->Outdent();
+					out->Print("}\n");
+				} else {
+					out->Print("{\n");
+					out->Indent();
+					GeneratePack(package, prefix, out, fieldmessage);
+					out->Print(packdict, "builder.set$argname$(msg);");
+					out->Outdent();
+					out->Print("}\n");
+				}
+			} else { //we can manually pack primitives
+				if(fd->is_map()) {
+					out->Print(packdict, "builder.putAll$argname$($inname$);\n");
+				} else if(fd->is_repeated()) {
+					out->Print(packdict, "builder.addAll$argname$($inname$);\n");
+				} else {
+					out->Print(packdict, "builder.set$argname$($inname$);\n");
+				}
+			}
+		}
+	}
+
+	out->Print("msg = builder;\n");
+	out->Outdent();
+	out->Print("}");
+}
+
 void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
   if(method->client_streaming() || method->server_streaming()) {
     throw "streaming services not supported";
   }
   StringMap methoddict;
   methoddict["name"] = name;
-  methoddict["serv"] = method->service()->name();
+  methoddict["serv"] = method->service()->name().substr(strlen("_method_"));
   methoddict["method"] = method->name();
 
   // Documentation
@@ -143,7 +218,6 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
 
   // Function Header
   auto ret = method->output_type();
-  //TODO: build a new class to support multiple returns?
   if(ret->field_count() == 1) {
     methoddict["rettype"] = GetJavaType(name, ret->field(0));
   } else {
@@ -164,24 +238,10 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
   // Function Body
   out->Indent();
 
-  //create protobuf object, pack it
-  methoddict["argmsg"] = args->name();
-  out->Print(methoddict, "$name$.$argmsg$.Builder msg = $name$.$argmsg$.newBuilder();\n");
-  for(int i = 0; i < args->field_count(); ++i) {
-    const FieldDescriptor* d = args->field(i);
-    methoddict["argname"] = capitalizeFirst(d->name());
-    methoddict["inname"] = d->name();
-  	if(d->is_map()) {
-      out->Print(methoddict, "msg.putAll$argname$($inname$);\n");
-    } else if(d->is_repeated()) {
-      out->Print(methoddict, "msg.addAll$argname$($inname$);\n");
-    } else {
-      out->Print(methoddict, "msg.set$argname$($inname$);\n");
-    }
-  }
-  out->Print(methoddict, "$name$.$argmsg$ msgbuffer = msg.build();\n\n");
+  //create protobuf object, pack it	
+	GeneratePack(name, "", out,  args);
 
-  //call kernel interface
+	//call kernel interface
   //TODO call kernel interface to make rpc 
   methoddict["ret"] = ret->name();
   out->Print(methoddict, "$name$.$ret$ retmsg = $name$.$ret$.getDefaultInstance();\n\n");
@@ -246,8 +306,9 @@ void JavaSapphireGenerator::GenerateSapphireStubs(GeneratorContext* context, str
   for(int i = 0; i < file->service_count(); ++i) {	   
     auto service = file->service(i);
     StringMap typedict;
+		string servicename = service->name().substr(strlen("_method_"));
 
-    ZeroCopyOutputStream* zcos = context->Open(service->name() + ".java");; 
+    ZeroCopyOutputStream* zcos = context->Open(servicename + ".java");; 
     auto out = new Printer(zcos, '$');
 
     //TODO Package and imports
@@ -260,7 +321,7 @@ void JavaSapphireGenerator::GenerateSapphireStubs(GeneratorContext* context, str
 	  }
 
     // Class Header
-    typedict["name"] = service->name();
+    typedict["name"] = servicename;
     out->Print(typedict, "class $name$ {\n");
     out->Indent();
     out->Print("public long oid;\n\n");

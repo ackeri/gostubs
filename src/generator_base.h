@@ -8,12 +8,15 @@
 
 using namespace std;
 using google::protobuf::FileDescriptor;
+using google::protobuf::Descriptor;
 using google::protobuf::compiler::GeneratorContext;
+
+
+bool IsInterface(const Descriptor* d);
 
 //Simplify CodeGenerator interface for implementation
 class BaseSapphireGenerator : public google::protobuf::compiler::CodeGenerator {
  public:
-
   //Implement this in subclass
   virtual void GenerateSapphireStubs(GeneratorContext* context, 
                                      string base,

@@ -1,6 +1,12 @@
 
 #include "generator_base.h"
 
+bool IsInterface(const Descriptor* d) {
+	//TODO this could probably be more precise
+	return d->oneof_decl_count() == 1 &&
+		     d->field_count() == 1;
+}
+
 bool BaseSapphireGenerator::Generate(const FileDescriptor* file,
 			                         const string& parameter,
                                      GeneratorContext* context,
@@ -22,7 +28,7 @@ bool BaseSapphireGenerator::Generate(const FileDescriptor* file,
   // Output stubs
   try {
     this->GenerateSapphireStubs(context, base, file);
-  } catch (std::exception ex) {
+  } catch (std::exception &ex) {
     *error = ex.what();
     return false;
   } catch (string ex) {
