@@ -30,11 +30,10 @@ Then running build (and providing your sudo password) will generate the protoc p
 ## Java
 
 You'll need to install jdk
-Installing java protoc runtime requires using maven, which I don't know how to use, so I build it from source and included the jar in the repository.
+Installing java protoc runtime requires using maven, which I didn't set up, so I built it from source and included the jar in the repository.
 
-Running javabuild.sh should run the tests if your protoc version matches mine
+Running javabuild.sh should run the tests if your java version matches mine
 
-if not, you can build from source by getting the protobuf repository and executing
 
 ```
 cd java
@@ -45,3 +44,19 @@ cd build
 jar cvf javaprotobuf.jar *
 ```
 
+
+If your using a different java version, you need to build protobuf.
+
+```
+sudo apt-get install autoconf automake libtool curl make g++ unzip
+git clone git@github.com:google/protobuf.git
+cd protobuf
+git submodule update --init --recursive
+./autogen.sh
+./configure
+make
+cd java
+mvn package
+```
+
+jar is in protobuf/java/core/target/ somewhere (you want the protobuf-java.jar)

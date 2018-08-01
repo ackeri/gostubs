@@ -3,8 +3,7 @@
 
 bool IsInterface(const Descriptor* d) {
 	//TODO this could probably be more precise
-	return d->oneof_decl_count() == 1 &&
-		     d->field_count() == 1;
+	return d->oneof_decl_count() != 0;
 }
 
 bool BaseSapphireGenerator::Generate(const FileDescriptor* file,

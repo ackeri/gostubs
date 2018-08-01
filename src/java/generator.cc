@@ -76,23 +76,33 @@ map<FieldDescriptor::Type,string> boxtypenames = {
 };
 
 
-string GetJavaPrimitiveType(string name, const FieldDescriptor* d) {
+string GetJavaPrimitiveType(string package, const FieldDescriptor* d) {
+  string name;
   switch(d->type()) {
     case FieldDescriptor::Type::TYPE_GROUP:
       throw "Depreceated protobuf type group unsupported";
     case FieldDescriptor::Type::TYPE_MESSAGE:
-	    return name + "." + d->message_type()->name();
+      name = d->message_type()->name();
+      if(!name.compare(0, strlen("_impl_"), "_impl_")) {
+          name = name.substr(strlen("_impl_"));
+      }
+	    return name;
   	default:
       return typenames[d->type()];
   }
 }
 
-string GetJavaBoxType(string name, const FieldDescriptor* d) {
+string GetJavaBoxType(string package, const FieldDescriptor* d) {
+  string name;
   switch(d->type()) {
     case FieldDescriptor::Type::TYPE_GROUP:
       throw "Depreceated protobuf type group unsupported";
     case FieldDescriptor::Type::TYPE_MESSAGE: //TODO strip _impl_
-	    return name + "." + d->message_type()->name();
+	    name = d->message_type()->name();
+      if(!name.compare(0, strlen("_impl_"), "_impl_")) {
+          name = name.substr(strlen("_impl_"));
+      }
+	    return name;
     default:
       return boxtypenames[d->type()];
   }
@@ -127,78 +137,223 @@ void GenerateComments(string comment, Printer* out) {
   out->Print(" **/\n");
 }
 
-void GeneratePack(string package, string prefix, Printer* out, const Descriptor* d) {
+//argname is name of argument
+//capname can be used for protobuf message get and set calls
+//type is the language type that represents the argument
+//comma is , for all except for the last entry
+void GenerateArgList(string package, Printer* out, const Descriptor* d, const char* format) {
+  StringMap argdict;
+  out->Print("(");
+  if(IsInterface(d)) {
+    const OneofDescriptor* ood = d->oneof_decl(0);
+    argdict["argname"] = ood->name();
+    argdict["capname"] = capitalizeFirst(ood->name());
+    argdict["type"] = d->name();
+    argdict["comma"] = "";
+    out->Print(argdict, format);
+  } else {
+    for(int i = 0; i < d->field_count(); ++i) {
+      const FieldDescriptor* fd = d->field(i);
+      argdict["argname"] = fd->name();
+      argdict["capname"] = capitalizeFirst(fd->name());
+      argdict["type"] = GetJavaType(package, fd);
+  	  argdict["comma"] = (i == d->field_count() - 1) ? "" : ", ";
+	    out->Print(argdict, format);
+    }
+  }
+  out->Print(")");
+}
+
+void GeneratePack(string package, Printer* out, const Descriptor* d) {
 	StringMap packdict;
 	packdict["package"] = package;
-	packdict["prefix"] = prefix;
 	packdict["type"] = d->name();
-	packdict["name"] = prefix + d->name();
+	packdict["msgtype"] = package + "." + d->name();
 
-	out->Print(packdict, "$package$.$type$.Builder msg; {\n");
-	out->Indent();
+  out->Print(packdict, "private $msgtype$.Builder Pack$type$");
+  GenerateArgList(package, out, d, "$type$ $argname$$comma$");
+  out->Print(" {\n");
+  out->Indent();
 
-	out->Print(packdict, "$package$.$type$.Builder builder = new $package$.$type$.newBuilder();\n");
-	if(IsInterface(d)) {
+	out->Print(packdict, "$msgtype$.Builder msg = $msgtype$.newBuilder();\n");
+  if(IsInterface(d)) {
 		const OneofDescriptor* ood = d->oneof_decl(0);
+    packdict["inname"] = ood->name();
 		//Determine runtime type
 		for(int i = 0; i < ood->field_count(); ++i) {
-			packdict["argname"] = capitalizeFirst(ood->name());
-			packdict["ftype"] = GetJavaType(package, ood->field(i));
-			out->Print(packdict, "if($argname$.getClass().equals($ftype$.class)) {\n");
-			out->Indent();
-			GeneratePack(package, prefix, out, ood->field(i)->message_type());
-			out->Print("builder = msg;\n");
-			out->Outdent();
-			out->Print("}\n");
+			packdict["argname"] = ood->name();
+			packdict["capname"] = capitalizeFirst(ood->name());
+			packdict["ftype"] = ood->field(i)->message_type()->name();
+      packdict["elseif"] = i == 0 ? "if" : " else if";
+      packdict["num"] = to_string(i + 1);
+			out->Print(packdict, "$elseif$($argname$.getClass().equals($ftype$.class)) {\n");
+      out->Indent();
+      out->Print(packdict, "msg.setOpt$num$(Pack$ftype$(($ftype$)$inname$));\n");
+      out->Outdent();
+      out->Print("}");
 		}
+    out->Print("\n");
 	} else {
 		for(int i = 0; i < d->field_count(); ++i) {
 			const FieldDescriptor* fd = d->field(i);
-			packdict["argname"] = capitalizeFirst(fd->name());
-			packdict["inname"] = fd->name();
+			packdict["capname"] = capitalizeFirst(fd->name());
+			packdict["argname"] = fd->name();
 
-			//Recurse to generate more packing code
 			const Descriptor* fieldmessage = fd->message_type();
 			if(fieldmessage) {
 				if(fd->is_map()) {
-					packdict["keytype"] = GetJavaType(package, fieldmessage->field(0));
-					out->Print(packdict, "for($keytype$ key : $inname$.keyset()) {\n");
+          const Descriptor* key = fieldmessage->field(0)->message_type();
+          const Descriptor* value = fieldmessage->field(1)->message_type();
+					packdict["keytype"] = GetJavaBoxType(package, fieldmessage->field(0));
+          packdict["valuetype"] = GetJavaBoxType(package, fieldmessage->field(1));
+
+					out->Print(packdict, "for($keytype$ key : $argname$.keySet()) {\n");
 					out->Indent();
-					GeneratePack(package, prefix, out, fieldmessage);
-					out->Print(packdict, "builder.put$argname$(msg)\n");
-					out->Outdent();
+          if(value) {
+            out->Print(packdict, "$valuetype$ value = $argname$.get(key);\n");
+          }
+
+          out->Print(packdict, "msg.put$capname$(");
+          if(key) {
+            packdict["key"] = capitalizeFirst(key->name());
+            out->Print(packdict, "Pack$key$");
+            GenerateArgList(package, out, key, "key.$argname$$comma$");
+            out->Print(", ");
+          } else {
+            out->Print(packdict, "key, ");
+          }
+
+          if(value) {
+            packdict["value"] = capitalizeFirst(value->name());
+            out->Print(packdict, "Pack$value$");
+            GenerateArgList(package, out, value, "value.$argname$$comma$");
+            out->Print(".build()");
+          } else {
+            out->Print(packdict, "$argname$.get(key)");
+          }
+          out->Print(");\n");
+					
+          out->Outdent();
 					out->Print("}\n");
+
 				} else if(fd->is_repeated()) {
-					packdict["ftype"] = GetJavaType(package, fd);
-					out->Print(packdict, "for($ftype$ key : $inname$) {\n");
+					packdict["ftype"] = GetJavaBoxType(package, fd);
+
+					out->Print(packdict, "for($ftype$ val : $inname$) {\n");
 					out->Indent();
-					GeneratePack(package, prefix, out, fieldmessage);
-					out->Print(packdict, "builder.put$argname$(msg);\n");
+					out->Print(packdict, "msg.put$capname$(Pack$ftype$(val));\n");
 					out->Outdent();
 					out->Print("}\n");
 				} else {
-					out->Print("{\n");
-					out->Indent();
-					GeneratePack(package, prefix, out, fieldmessage);
-					out->Print(packdict, "builder.set$argname$(msg);");
-					out->Outdent();
-					out->Print("}\n");
+					packdict["ftype"] = capitalizeFirst(fieldmessage->name());
+					out->Print(packdict, "msg.set$capname$(Pack$ftype$");
+          const char* format = (packdict["argname"].append(".$argname$$comma$")).c_str();
+          GenerateArgList(package, out, fieldmessage, format);
+          out->Print(packdict, ");\n");
 				}
 			} else { //we can manually pack primitives
-				if(fd->is_map()) {
-					out->Print(packdict, "builder.putAll$argname$($inname$);\n");
-				} else if(fd->is_repeated()) {
-					out->Print(packdict, "builder.addAll$argname$($inname$);\n");
+				if(fd->is_repeated()) {
+					out->Print(packdict, "msg.addAll$capname$($argname$);\n");
 				} else {
-					out->Print(packdict, "builder.set$argname$($inname$);\n");
+					out->Print(packdict, "msg.set$capname$($argname$);\n");
 				}
 			}
 		}
 	}
 
-	out->Print("msg = builder;\n");
+	out->Print("return msg;\n");
 	out->Outdent();
-	out->Print("}");
+	out->Print("}\n\n");
+}
+
+void GenerateUnpack(string package, Printer* out, const Descriptor* d) {
+  StringMap unpackdict;
+  unpackdict["package"] = package;
+  unpackdict["name"] = d->name();
+  bool inlined = d->field_count() == 1;
+  if(inlined) {
+    unpackdict["type"] = GetJavaType(package, d->field(0));
+  } else {
+    unpackdict["type"] = d->name();
+  }
+  
+  out->Print(unpackdict, "private $type$ Unpack$name$($package$.$name$ in) {\n");
+  out->Indent();
+
+  out->Print(unpackdict, "$type$ ret = new $type$();\n");
+  if(IsInterface(d)) {
+  } else {
+    for(int i = 0; i < d->field_count(); ++i) {
+      const FieldDescriptor* fd = d->field(i);
+      unpackdict["rettype"] = GetJavaType(package, fd);
+      if(inlined) {
+        unpackdict["retname"] = "";
+      } else {
+        unpackdict["retname"] = "." + fd->name();
+      }
+      unpackdict["capname"] = capitalizeFirst(fd->name());
+
+      if(fd->is_map()) {
+        const Descriptor* d = fd->message_type();
+        const FieldDescriptor* key = d->field(0);
+        const FieldDescriptor* value = d->field(1);
+        unpackdict["keytype"] = GetJavaBoxType(package, key);
+        unpackdict["inkeytype"] = (key->message_type() ? package + "." : "") + unpackdict["keytype"]; 
+        unpackdict["valuetype"] = GetJavaBoxType(package, value);
+        unpackdict["invaluetype"] = (value->message_type() ? package + "." : "") + unpackdict["valuetype"]; 
+
+        out->Print(unpackdict, "ret$retname$ = new HashMap<$keytype$, $valuetype$>();\n");
+        out->Print(unpackdict, "Map<$inkeytype$, $invaluetype$> inmap = in.get$capname$Map();\n");
+        out->Print(unpackdict, "for($inkeytype$ key : inmap.keySet()) {;\n");
+        out->Indent();
+        out->Print(unpackdict, "ret$retname$.put(");
+        if(key->message_type()) {
+          out->Print(unpackdict, "Unpack$keytype$(key)");
+        } else {
+          out->Print(unpackdict, "key");
+        }
+        out->Print(unpackdict, ", ");
+        if(value->message_type()) {
+          out->Print(unpackdict, "Unpack$valuetype$(inmap.get(key))");
+        } else {
+          out->Print(unpackdict, "inmap.get(key)");
+        }
+        out->Print(unpackdict, ");\n");
+        out->Outdent();
+        out->Print(unpackdict, "}\n");
+      } else if(fd->is_repeated()) {
+        unpackdict["ftype"] = GetJavaBoxType(package, fd);
+
+        out->Print(unpackdict, "ret$retname$ = new ArrayList<$ftype$>();\n");
+        out->Print(unpackdict, "for($ftype$ value : in.get$capname$List()) {\n");
+        out->Indent();
+
+        out->Print(unpackdict, "ret$retname$.add(");
+        if(fd->message_type()) {
+            out->Print(unpackdict, "Unpack$ftype$(value)");
+        } else {
+            out->Print(unpackdict, "value");
+        }
+        out->Print(");\n");
+
+        out->Outdent();
+        out->Print(unpackdict, "}\n");
+      } else {
+        unpackdict["ftype"] = GetJavaType(package, fd);
+        out->Print(unpackdict, "ret$retname$ = ");
+        if(fd->message_type()) {
+          out->Print(unpackdict, "Unpack$ftype$(in.get$capname$())");
+        } else {
+          out->Print(unpackdict, "in.get$capname$()");
+        }
+        out->Print(unpackdict, ";\n");
+      }
+    }
+  }
+
+  out->Print(unpackdict, "return ret;\n");
+  out->Outdent();
+  out->Print("}\n\n");
 }
 
 void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
@@ -206,7 +361,7 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
     throw "streaming services not supported";
   }
   StringMap methoddict;
-  methoddict["name"] = name;
+  methoddict["package"] = name;
   methoddict["serv"] = method->service()->name().substr(strlen("_method_"));
   methoddict["method"] = method->name();
 
@@ -223,62 +378,32 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
   } else {
     methoddict["rettype"] = ret->name();
   }
-  out->Print(methoddict,"$rettype$ $method$(");
+  out->Print(methoddict,"$rettype$ $method$");
 
   auto args = method->input_type();
-  for(int i = 0; i < args->field_count(); ++i) {
-    const FieldDescriptor* d = args->field(i);
-    methoddict["argname"] = d->name();
-    methoddict["type"] = GetJavaType(name, d);
-	  methoddict["comma"] = (i == args->field_count() - 1) ? "" : ", ";
-	  out->Print(methoddict, "$type$ $argname$$comma$");
-  }
-  out->Print(") {\n");
-
+  GenerateArgList(name, out, args, "$type$ $argname$$comma$");
+  out->Print(" {\n");
+  
   // Function Body
   out->Indent();
 
-  //create protobuf object, pack it	
-	GeneratePack(name, "", out,  args);
+  //create protobuf object, pack it
+  methoddict["arg"] = args->name();
+  out->Print(methoddict, "byte[] buf = Pack$arg$");
+  GenerateArgList(name, out, args, "$argname$$comma$");
+  out->Print(methoddict, ".build().toByteArray();\n");
 
 	//call kernel interface
   //TODO call kernel interface to make rpc 
   methoddict["ret"] = ret->name();
-  out->Print(methoddict, "$name$.$ret$ retmsg = $name$.$ret$.getDefaultInstance();\n\n");
+  out->Print(methoddict, "$package$.$ret$ retmsg = $package$.$ret$.getDefaultInstance();\n");
 
   //unpack return value
-  if(ret->field_count() == 1) {
-    const FieldDescriptor* d = ret->field(0);
-    methoddict["rettype"] = GetJavaType(name, d);
-    methoddict["retname"] = capitalizeFirst(d->name());
-    if(d->is_map()) {
-        out->Print(methoddict, "return new Hash$rettype$(retmsg.get$retname$Map());\n");
-    } else if(d->is_repeated()) {
-        out->Print(methoddict, "return new Array$rettype$(retmsg.get$retname$List());\n");
-    } else {
-        out->Print(methoddict, "return retmsg.get$retname$();\n");
-    }
-
-  } else {
-    out->Print(methoddict, "$ret$ retval = new $ret$();\n");
-    for(int i = 0; i < ret->field_count(); ++i) {
-        const FieldDescriptor* d = ret->field(i);
-        methoddict["rettype"] = GetJavaType(name, d);
-        methoddict["retname"] = capitalizeFirst(d->name());
-        if(d->is_map()) {
-            out->Print(methoddict, "retval.$retname$ = new Hash$rettype$(retmsg.get$retname$Map());\n");
-        } else if(d->is_repeated()) {
-            out->Print(methoddict, "retval.$retname$ = new Array$rettype$(retmsg.get$retname$List());\n");
-        } else {
-            out->Print(methoddict, "retval.$retname$ = retmsg.get$retname$();\n");
-        }
-    }
-    out->Print(methoddict, "return retval;\n");
-  }
+  out->Print(methoddict, "return Unpack$ret$(retmsg);\n");
   out->Outdent();
   out->Print("}\n\n");
 }
-
+//TODO void returns/args probably don't work
 void GenerateReturnType(string name, Printer* out, const MethodDescriptor* method) {
   const Descriptor* d = method->output_type();
   if(d->field_count() < 2)
@@ -286,13 +411,22 @@ void GenerateReturnType(string name, Printer* out, const MethodDescriptor* metho
 
   StringMap returndict;
   returndict["rettype"] = d->name();
-  out->Print(returndict, "static class $rettype$ {\n");
+  out->Print(returndict, "static class $rettype$");
+  if(!d->name().compare(0, strlen("_impl_"), "_impl_")) {
+    returndict["parent"] = d->name().substr(strlen("_impl_"));
+    out->Print(returndict, " extends $parent$ " );
+  } else if(IsInterface(d)) {
+    //TODO find parent
+  }
+  out->Print("{\n");
   out->Indent();
 
   for(int i = 0; i < d->field_count(); ++i) {
     const FieldDescriptor* fd = d->field(i);
+    if(i == 0 && fd->name().equals("parent"))
+        continue;
     returndict["type"] = GetJavaType(name, fd);
-    returndict["name"] = capitalizeFirst(fd->name()); 
+    returndict["name"] = fd->name(); 
     out->Print(returndict, "public $type$ $name$;\n");
   }
 
@@ -300,15 +434,15 @@ void GenerateReturnType(string name, Printer* out, const MethodDescriptor* metho
   out->Print("}\n\n");
 }
 
-void JavaSapphireGenerator::GenerateSapphireStubs(GeneratorContext* context, string name, const FileDescriptor* file) const {
-  name = capitalizeFirst(name);
+void JavaSapphireGenerator::GenerateSapphireStubs(GeneratorContext* context, string package, const FileDescriptor* file) const {
+  package = capitalizeFirst(package);
 
   for(int i = 0; i < file->service_count(); ++i) {	   
     auto service = file->service(i);
     StringMap typedict;
 		string servicename = service->name().substr(strlen("_method_"));
 
-    ZeroCopyOutputStream* zcos = context->Open(servicename + ".java");; 
+    ZeroCopyOutputStream* zcos = context->Open(servicename + "_stub.java");; 
     auto out = new Printer(zcos, '$');
 
     //TODO Package and imports
@@ -322,18 +456,37 @@ void JavaSapphireGenerator::GenerateSapphireStubs(GeneratorContext* context, str
 
     // Class Header
     typedict["name"] = servicename;
-    out->Print(typedict, "class $name$ {\n");
+    out->Print(typedict, "class $name$_stub {\n");
     out->Indent();
     out->Print("public long oid;\n\n");
 
     // Each method implementation
     for(int j = 0; j < service->method_count(); ++j) {
-      GenerateMethod(name, out, service->method(j));
+      GenerateMethod(package, out, service->method(j));
     }
 
     // Tuple types for returns
     for(int j = 0; j < service->method_count(); ++j) {
-      GenerateReturnType(name, out, service->method(j));
+      GenerateReturnType(package, out, service->method(j));
+    }
+
+    // Helpers for packing/unpacking each Message type
+    std::set<const Descriptor*> generated;
+    for(int j = 0; j < service->method_count(); ++j) {
+      const Descriptor* input = service->method(j)->input_type();
+      const Descriptor* output = service->method(j)->output_type();
+
+      if(generated.find(input) == generated.end()) {
+        GeneratePack(package, out, input);
+        GenerateUnpack(package, out, input);
+        generated.insert(input);
+      }
+
+      if(generated.find(output) == generated.end()) {
+        GeneratePack(package, out, output);
+        GenerateUnpack(package, out, output);
+        generated.insert(output);
+      }
     }
 
     out->Outdent();
