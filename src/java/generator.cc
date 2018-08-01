@@ -409,18 +409,29 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
 
 	//call kernel interface
   //TODO call kernel interface to make rpc
-  out->Print(methoddict, "api.MgmtgrpcServiceGrpc.GenericMethodReply retmsg = \n");
+  out->Print(methoddict, "api.Api.GenericMethodReply retmsg = \n");
   out->Indent();
-  out->Print(methoddict, "api.MgmtgrpcServiceGrpc.GenericMethodInvoke(\n");
-  out->Print(methoddict, "api.MgmtgrpcServiceGrpc.GenericMethodRequest.newBuilder()\n");
-  out->Print(methoddict, ".setObjId(oid)\n");
-  out->Print(methoddict, ".setSapphireObjectName(\"$serv$\")\n");
+  out->Print(methoddict, "api.MgmtgrpcServiceGrpc.newBlockingStub(ManagedChannelBuilder.forAddress(\"localhost\", 2000).usePlaintext().build()).genericMethodInvoke(\n");
+  out->Print(methoddict, "api.Api.GenericMethodRequest.newBuilder()\n");
+  out->Print(methoddict, ".setObjId(Long.toString(oid))\n");
+  out->Print(methoddict, ".setSapphireObjName(\"$serv$\")\n");
   out->Print(methoddict, ".setFuncName(\"$method$\")\n");
-  out->Print(methoddict, ".setParams(buf)\n");
+  out->Print(methoddict, ".setParams(com.google.protobuf.ByteString.copyFrom(buf))\n");
+  out->Print(methoddict, ".build()\n");
   out->Outdent();
   out->Print(methoddict, ");\n");
   methoddict["ret"] = ret->name();
-  out->Print(methoddict, "$package$.$ret$ ret = $package$.$ret$.parsefrom(retmsg.getRet());\n");
+
+  out->Print(methoddict, "$package$.$ret$ ret;\n");
+  out->Print(methoddict, "try {\n");
+  out->Indent();
+  out->Print(methoddict, "ret = $package$.$ret$.parseFrom(retmsg.getRet());\n");
+  out->Outdent();
+  out->Print(methoddict, "} catch(com.google.protobuf.InvalidProtocolBufferException ex) {\n");
+  out->Indent();
+  out->Print(methoddict, "throw new ClassCastException(ex.getMessage());\n");
+  out->Outdent();
+  out->Print(methoddict, "}\n");
 
   //unpack return value
   out->Print(methoddict, "return SerialUtil.Unpack$ret$(ret);\n");
@@ -493,6 +504,7 @@ void JavaSapphireGenerator::GenerateSapphireStubs(GeneratorContext* context, str
     //TODO Package and imports
     out->Print("import java.util.*;\n");
     out->Print("import api.*;\n");
+    out->Print("import io.grpc.*;\n");
 	
     // Documentation
 	  SourceLocation sl;
