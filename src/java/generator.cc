@@ -83,10 +83,7 @@ string GetJavaPrimitiveType(string package, const FieldDescriptor* d) {
       throw "Depreceated protobuf type group unsupported";
     case FieldDescriptor::Type::TYPE_MESSAGE:
       name = d->message_type()->name();
-      if(!name.compare(0, strlen("_impl_"), "_impl_")) {
-          name = name.substr(strlen("_impl_"));
-      }
-	    return name;
+	    return "SerialUtil." + name;
   	default:
       return typenames[d->type()];
   }
@@ -97,12 +94,9 @@ string GetJavaBoxType(string package, const FieldDescriptor* d) {
   switch(d->type()) {
     case FieldDescriptor::Type::TYPE_GROUP:
       throw "Depreceated protobuf type group unsupported";
-    case FieldDescriptor::Type::TYPE_MESSAGE: //TODO strip _impl_
+    case FieldDescriptor::Type::TYPE_MESSAGE: 
 	    name = d->message_type()->name();
-      if(!name.compare(0, strlen("_impl_"), "_impl_")) {
-          name = name.substr(strlen("_impl_"));
-      }
-	    return name;
+	    return "SerialUtil." + name;
     default:
       return boxtypenames[d->type()];
   }
@@ -148,7 +142,7 @@ void GenerateArgList(string package, Printer* out, const Descriptor* d, const ch
     const OneofDescriptor* ood = d->oneof_decl(0);
     argdict["argname"] = ood->name();
     argdict["capname"] = capitalizeFirst(ood->name());
-    argdict["type"] = d->name();
+    argdict["type"] = "SerialUtil." + d->name();
     argdict["comma"] = "";
     out->Print(argdict, format);
   } else {
@@ -170,7 +164,7 @@ void GeneratePack(string package, Printer* out, const Descriptor* d) {
 	packdict["type"] = d->name();
 	packdict["msgtype"] = package + "." + d->name();
 
-  out->Print(packdict, "private $msgtype$.Builder Pack$type$");
+  out->Print(packdict, "public static $msgtype$.Builder Pack$type$");
   GenerateArgList(package, out, d, "$type$ $argname$$comma$");
   out->Print(" {\n");
   out->Indent();
@@ -183,16 +177,28 @@ void GeneratePack(string package, Printer* out, const Descriptor* d) {
 		for(int i = 0; i < ood->field_count(); ++i) {
 			packdict["argname"] = ood->name();
 			packdict["capname"] = capitalizeFirst(ood->name());
-			packdict["ftype"] = ood->field(i)->message_type()->name();
+			packdict["ftype"] = GetJavaType(package, ood->field(i));
+      packdict["fname"] = ood->field(i)->message_type()->name();
       packdict["elseif"] = i == 0 ? "if" : " else if";
       packdict["num"] = to_string(i + 1);
 			out->Print(packdict, "$elseif$($argname$.getClass().equals($ftype$.class)) {\n");
       out->Indent();
-      out->Print(packdict, "msg.setOpt$num$(Pack$ftype$(($ftype$)$inname$));\n");
+      out->Print(packdict, "$ftype$ tmp = ($ftype$)$inname$;\n");
+      out->Print(packdict, "msg.setOpt$num$(Pack$fname$");
+      if(IsInterface(ood->field(i)->message_type())) {
+        out->Print("(tmp)");
+      } else {
+        GenerateArgList(package, out, ood->field(i)->message_type(), "tmp.$argname$$comma$");
+      }
+      out->Print(");\n");
       out->Outdent();
       out->Print("}");
 		}
-    out->Print("\n");
+    out->Print(" else {\n");
+    out->Indent();
+    out->Print(packdict, "throw new ClassCastException(\"Could not find message type for \" + $inname$);\n");
+    out->Outdent();
+    out->Print("}\n");
 	} else {
 		for(int i = 0; i < d->field_count(); ++i) {
 			const FieldDescriptor* fd = d->field(i);
@@ -274,14 +280,20 @@ void GenerateUnpack(string package, Printer* out, const Descriptor* d) {
   if(inlined) {
     unpackdict["type"] = GetJavaType(package, d->field(0));
   } else {
-    unpackdict["type"] = d->name();
+    unpackdict["type"] = "SerialUtil." + d->name();
   }
   
-  out->Print(unpackdict, "private $type$ Unpack$name$($package$.$name$ in) {\n");
+  out->Print(unpackdict, "public static $type$ Unpack$name$($package$.$name$ in) {\n");
   out->Indent();
 
-  out->Print(unpackdict, "$type$ ret = new $type$();\n");
+  out->Print(unpackdict, "$type$ ret");
+  if(inlined) {
+    out->Print(unpackdict, ";\n");
+  } else {
+    out->Print(unpackdict, " = new $type$();\n");
+  }
   if(IsInterface(d)) {
+      //TODO implement
   } else {
     for(int i = 0; i < d->field_count(); ++i) {
       const FieldDescriptor* fd = d->field(i);
@@ -297,10 +309,12 @@ void GenerateUnpack(string package, Printer* out, const Descriptor* d) {
         const Descriptor* d = fd->message_type();
         const FieldDescriptor* key = d->field(0);
         const FieldDescriptor* value = d->field(1);
+        unpackdict["keyname"] = key->message_type() ? key->message_type()->name() : "";
         unpackdict["keytype"] = GetJavaBoxType(package, key);
-        unpackdict["inkeytype"] = (key->message_type() ? package + "." : "") + unpackdict["keytype"]; 
+        unpackdict["inkeytype"] = (key->message_type() ? package + "." + unpackdict["keyname"] : unpackdict["keytype"]); 
+        unpackdict["valuename"] = value->message_type() ? value->message_type()->name() : "";
         unpackdict["valuetype"] = GetJavaBoxType(package, value);
-        unpackdict["invaluetype"] = (value->message_type() ? package + "." : "") + unpackdict["valuetype"]; 
+        unpackdict["invaluetype"] = (value->message_type() ? package + "." + unpackdict["valuename"]: unpackdict["valuetype"]); 
 
         out->Print(unpackdict, "ret$retname$ = new HashMap<$keytype$, $valuetype$>();\n");
         out->Print(unpackdict, "Map<$inkeytype$, $invaluetype$> inmap = in.get$capname$Map();\n");
@@ -308,13 +322,13 @@ void GenerateUnpack(string package, Printer* out, const Descriptor* d) {
         out->Indent();
         out->Print(unpackdict, "ret$retname$.put(");
         if(key->message_type()) {
-          out->Print(unpackdict, "Unpack$keytype$(key)");
+          out->Print(unpackdict, "Unpack$keyname$(key)");
         } else {
           out->Print(unpackdict, "key");
         }
         out->Print(unpackdict, ", ");
         if(value->message_type()) {
-          out->Print(unpackdict, "Unpack$valuetype$(inmap.get(key))");
+          out->Print(unpackdict, "Unpack$valuename$(inmap.get(key))");
         } else {
           out->Print(unpackdict, "inmap.get(key)");
         }
@@ -339,10 +353,10 @@ void GenerateUnpack(string package, Printer* out, const Descriptor* d) {
         out->Outdent();
         out->Print(unpackdict, "}\n");
       } else {
-        unpackdict["ftype"] = GetJavaType(package, fd);
         out->Print(unpackdict, "ret$retname$ = ");
         if(fd->message_type()) {
-          out->Print(unpackdict, "Unpack$ftype$(in.get$capname$())");
+          unpackdict["fname"] = fd->message_type()->name();
+          out->Print(unpackdict, "Unpack$fname$(in.get$capname$())");
         } else {
           out->Print(unpackdict, "in.get$capname$()");
         }
@@ -376,7 +390,7 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
   if(ret->field_count() == 1) {
     methoddict["rettype"] = GetJavaType(name, ret->field(0));
   } else {
-    methoddict["rettype"] = ret->name();
+    methoddict["rettype"] = "SerialUtil." + ret->name();
   }
   out->Print(methoddict,"$rettype$ $method$");
 
@@ -389,45 +403,55 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
 
   //create protobuf object, pack it
   methoddict["arg"] = args->name();
-  out->Print(methoddict, "byte[] buf = Pack$arg$");
+  out->Print(methoddict, "byte[] buf = SerialUtil.Pack$arg$");
   GenerateArgList(name, out, args, "$argname$$comma$");
   out->Print(methoddict, ".build().toByteArray();\n");
 
 	//call kernel interface
-  //TODO call kernel interface to make rpc 
+  //TODO call kernel interface to make rpc
+  out->Print(methoddict, "api.MgmtgrpcServiceGrpc.GenericMethodReply retmsg = \n");
+  out->Indent();
+  out->Print(methoddict, "api.MgmtgrpcServiceGrpc.GenericMethodInvoke(\n");
+  out->Print(methoddict, "api.MgmtgrpcServiceGrpc.GenericMethodRequest.newBuilder()\n");
+  out->Print(methoddict, ".setObjId(oid)\n");
+  out->Print(methoddict, ".setSapphireObjectName(\"$serv$\")\n");
+  out->Print(methoddict, ".setFuncName(\"$method$\")\n");
+  out->Print(methoddict, ".setParams(buf)\n");
+  out->Outdent();
+  out->Print(methoddict, ");\n");
   methoddict["ret"] = ret->name();
-  out->Print(methoddict, "$package$.$ret$ retmsg = $package$.$ret$.getDefaultInstance();\n");
+  out->Print(methoddict, "$package$.$ret$ ret = $package$.$ret$.parsefrom(retmsg.getRet());\n");
 
   //unpack return value
-  out->Print(methoddict, "return Unpack$ret$(retmsg);\n");
+  out->Print(methoddict, "return SerialUtil.Unpack$ret$(ret);\n");
   out->Outdent();
   out->Print("}\n\n");
 }
 //TODO void returns/args probably don't work
-void GenerateReturnType(string name, Printer* out, const MethodDescriptor* method) {
-  const Descriptor* d = method->output_type();
-  if(d->field_count() < 2)
-      return;
-
+void GenerateType(string name, Printer* out, const Descriptor* d) {
+  //TODO skip _impl_ if in native language
+  
   StringMap returndict;
-  returndict["rettype"] = d->name();
-  out->Print(returndict, "static class $rettype$");
+  returndict["type"] = d->name();
+  out->Print(returndict, "public static class $type$");
   if(!d->name().compare(0, strlen("_impl_"), "_impl_")) {
     returndict["parent"] = d->name().substr(strlen("_impl_"));
-    out->Print(returndict, " extends $parent$ " );
-  } else if(IsInterface(d)) {
+    out->Print(returndict, " extends $parent$ ");
+  } else if(IsInterface(d) && d->name().compare("Testobj")) {
     //TODO find parent
+    returndict["parent"] = "Testobj";
+    out->Print(returndict, " extends $parent$ ");
   }
   out->Print("{\n");
   out->Indent();
 
   for(int i = 0; i < d->field_count(); ++i) {
     const FieldDescriptor* fd = d->field(i);
-    if(i == 0 && fd->name().equals("parent"))
+    if(i == 0 && !fd->name().compare("parent"))
         continue;
-    returndict["type"] = GetJavaType(name, fd);
+    returndict["ftype"] = GetJavaType(name, fd);
     returndict["name"] = fd->name(); 
-    out->Print(returndict, "public $type$ $name$;\n");
+    out->Print(returndict, "public $ftype$ $name$;\n");
   }
 
   out->Outdent();
@@ -437,6 +461,27 @@ void GenerateReturnType(string name, Printer* out, const MethodDescriptor* metho
 void JavaSapphireGenerator::GenerateSapphireStubs(GeneratorContext* context, string package, const FileDescriptor* file) const {
   package = capitalizeFirst(package);
 
+  //Create all pack/unpack helpers
+  ZeroCopyOutputStream* utilzcos = context->Open("SerialUtil.java");
+  Printer* util = new Printer(utilzcos, '$');
+
+  util->Print("import java.util.*;\n\n");
+  util->Print("public class SerialUtil {\n\n");
+  util->Indent();
+  std::set<const Descriptor*> generated;
+
+  for(int i = 0; i < file->message_type_count(); ++i) {
+    GenerateType(package, util, file->message_type(i));
+    GeneratePack(package, util, file->message_type(i));
+    GenerateUnpack(package, util, file->message_type(i));
+  }
+
+  util->Outdent();
+  util->Print("}\n");
+  delete util;
+  delete utilzcos;
+
+  //Create stub for each service
   for(int i = 0; i < file->service_count(); ++i) {	   
     auto service = file->service(i);
     StringMap typedict;
@@ -447,6 +492,7 @@ void JavaSapphireGenerator::GenerateSapphireStubs(GeneratorContext* context, str
 
     //TODO Package and imports
     out->Print("import java.util.*;\n");
+    out->Print("import api.*;\n");
 	
     // Documentation
 	  SourceLocation sl;
@@ -463,30 +509,6 @@ void JavaSapphireGenerator::GenerateSapphireStubs(GeneratorContext* context, str
     // Each method implementation
     for(int j = 0; j < service->method_count(); ++j) {
       GenerateMethod(package, out, service->method(j));
-    }
-
-    // Tuple types for returns
-    for(int j = 0; j < service->method_count(); ++j) {
-      GenerateReturnType(package, out, service->method(j));
-    }
-
-    // Helpers for packing/unpacking each Message type
-    std::set<const Descriptor*> generated;
-    for(int j = 0; j < service->method_count(); ++j) {
-      const Descriptor* input = service->method(j)->input_type();
-      const Descriptor* output = service->method(j)->output_type();
-
-      if(generated.find(input) == generated.end()) {
-        GeneratePack(package, out, input);
-        GenerateUnpack(package, out, input);
-        generated.insert(input);
-      }
-
-      if(generated.find(output) == generated.end()) {
-        GeneratePack(package, out, output);
-        GenerateUnpack(package, out, output);
-        generated.insert(output);
-      }
     }
 
     out->Outdent();

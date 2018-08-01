@@ -19,9 +19,9 @@ protoc --java_sapphire_out=javaoutput test.proto && \
 #build and run java test
 echo "building generated code" && \
 cd javaoutput && \
-javac -cp ".:./javaprotobuf.jar" test.java && \
+javac -cp "./*" test.java && \
 echo "running generated code" && \
-java -cp ".:./javaprotobuf.jar" test && \
+java -cp "./*" test && \
 
 echo "done"
 
