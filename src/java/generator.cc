@@ -137,7 +137,6 @@ void GenerateComments(string comment, Printer* out) {
 //comma is , for all except for the last entry
 void GenerateArgList(string package, Printer* out, const Descriptor* d, const char* format) {
   StringMap argdict;
-  out->Print("(");
   if(IsInterface(d)) {
     const OneofDescriptor* ood = d->oneof_decl(0);
     argdict["argname"] = ood->name();
@@ -152,10 +151,9 @@ void GenerateArgList(string package, Printer* out, const Descriptor* d, const ch
       argdict["capname"] = capitalizeFirst(fd->name());
       argdict["type"] = GetJavaType(package, fd);
   	  argdict["comma"] = (i == d->field_count() - 1) ? "" : ", ";
-	    out->Print(argdict, format);
+      out->Print(argdict, format);
     }
   }
-  out->Print(")");
 }
 
 void GeneratePack(string package, Printer* out, const Descriptor* d) {
@@ -164,9 +162,9 @@ void GeneratePack(string package, Printer* out, const Descriptor* d) {
 	packdict["type"] = d->name();
 	packdict["msgtype"] = package + "." + d->name();
 
-  out->Print(packdict, "public static $msgtype$.Builder Pack$type$");
+  out->Print(packdict, "public static $msgtype$.Builder Pack$type$(");
   GenerateArgList(package, out, d, "$type$ $argname$$comma$");
-  out->Print(" {\n");
+  out->Print(") {\n");
   out->Indent();
 
 	out->Print(packdict, "$msgtype$.Builder msg = $msgtype$.newBuilder();\n");
@@ -184,13 +182,13 @@ void GeneratePack(string package, Printer* out, const Descriptor* d) {
 			out->Print(packdict, "$elseif$($argname$.getClass().equals($ftype$.class)) {\n");
       out->Indent();
       out->Print(packdict, "$ftype$ tmp = ($ftype$)$inname$;\n");
-      out->Print(packdict, "msg.setOpt$num$(Pack$fname$");
+      out->Print(packdict, "msg.setOpt$num$(Pack$fname$(");
       if(IsInterface(ood->field(i)->message_type())) {
-        out->Print("(tmp)");
+        out->Print("tmp");
       } else {
         GenerateArgList(package, out, ood->field(i)->message_type(), "tmp.$argname$$comma$");
       }
-      out->Print(");\n");
+      out->Print("));\n");
       out->Outdent();
       out->Print("}");
 		}
@@ -222,18 +220,18 @@ void GeneratePack(string package, Printer* out, const Descriptor* d) {
           out->Print(packdict, "msg.put$capname$(");
           if(key) {
             packdict["key"] = capitalizeFirst(key->name());
-            out->Print(packdict, "Pack$key$");
+            out->Print(packdict, "Pack$key$(");
             GenerateArgList(package, out, key, "key.$argname$$comma$");
-            out->Print(", ");
+            out->Print("), ");
           } else {
             out->Print(packdict, "key, ");
           }
 
           if(value) {
             packdict["value"] = capitalizeFirst(value->name());
-            out->Print(packdict, "Pack$value$");
+            out->Print(packdict, "Pack$value$(");
             GenerateArgList(package, out, value, "value.$argname$$comma$");
-            out->Print(".build()");
+            out->Print(").build()");
           } else {
             out->Print(packdict, "$argname$.get(key)");
           }
@@ -252,10 +250,10 @@ void GeneratePack(string package, Printer* out, const Descriptor* d) {
 					out->Print("}\n");
 				} else {
 					packdict["ftype"] = capitalizeFirst(fieldmessage->name());
-					out->Print(packdict, "msg.set$capname$(Pack$ftype$");
+					out->Print(packdict, "msg.set$capname$(Pack$ftype$(");
           const char* format = (packdict["argname"].append(".$argname$$comma$")).c_str();
           GenerateArgList(package, out, fieldmessage, format);
-          out->Print(packdict, ");\n");
+          out->Print(packdict, "));\n");
 				}
 			} else { //we can manually pack primitives
 				if(fd->is_repeated()) {
@@ -276,33 +274,41 @@ void GenerateUnpack(string package, Printer* out, const Descriptor* d) {
   StringMap unpackdict;
   unpackdict["package"] = package;
   unpackdict["name"] = d->name();
-  bool inlined = d->field_count() == 1;
-  if(inlined) {
-    unpackdict["type"] = GetJavaType(package, d->field(0));
-  } else {
-    unpackdict["type"] = "SerialUtil." + d->name();
-  }
+  bool inlined = d->field_count() == 1 && !IsInterface(d);
+  unpackdict["type"] = "SerialUtil." + d->name();
   
   out->Print(unpackdict, "public static $type$ Unpack$name$($package$.$name$ in) {\n");
   out->Indent();
 
   out->Print(unpackdict, "$type$ ret");
-  if(inlined) {
-    out->Print(unpackdict, ";\n");
-  } else {
-    out->Print(unpackdict, " = new $type$();\n");
-  }
+  out->Print(unpackdict, " = new $type$();\n");
   if(IsInterface(d)) {
-      //TODO implement
+		const OneofDescriptor* ood = d->oneof_decl(0);
+    unpackdict["inname"] = ood->name();
+		//Determine runtime type
+		for(int i = 0; i < ood->field_count(); ++i) {
+			unpackdict["argname"] = ood->name();
+			unpackdict["capname"] = capitalizeFirst(ood->name());
+			unpackdict["ftype"] = GetJavaType(package, ood->field(i));
+      unpackdict["fname"] = ood->field(i)->message_type()->name();
+      unpackdict["elseif"] = i == 0 ? "if" : " else if";
+      unpackdict["num"] = to_string(i + 1);
+			out->Print(unpackdict, "$elseif$(in.hasOpt$num$()) {\n");
+      out->Indent();
+      out->Print(unpackdict, "ret = Unpack$fname$(in.getOpt$num$());\n");
+      out->Outdent();
+      out->Print("}");
+		}
+    out->Print(" else {\n");
+    out->Indent();
+    out->Print(unpackdict, "throw new ClassCastException(\"Could not find message type for \" + in);\n");
+    out->Outdent();
+    out->Print("}\n");
   } else {
     for(int i = 0; i < d->field_count(); ++i) {
       const FieldDescriptor* fd = d->field(i);
       unpackdict["rettype"] = GetJavaType(package, fd);
-      if(inlined) {
-        unpackdict["retname"] = "";
-      } else {
-        unpackdict["retname"] = "." + fd->name();
-      }
+      unpackdict["retname"] = "." + fd->name();
       unpackdict["capname"] = capitalizeFirst(fd->name());
 
       if(fd->is_map()) {
@@ -387,28 +393,29 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
 
   // Function Header
   auto ret = method->output_type();
-  if(ret->field_count() == 1) {
+  bool inlined = ret->field_count() == 1;
+  if(inlined) {
     methoddict["rettype"] = GetJavaType(name, ret->field(0));
   } else {
     methoddict["rettype"] = "SerialUtil." + ret->name();
   }
-  out->Print(methoddict,"$rettype$ $method$");
+  out->Print(methoddict,"$rettype$ $method$(");
 
   auto args = method->input_type();
   GenerateArgList(name, out, args, "$type$ $argname$$comma$");
-  out->Print(" {\n");
+  out->Print(") {\n");
   
   // Function Body
   out->Indent();
 
   //create protobuf object, pack it
   methoddict["arg"] = args->name();
-  out->Print(methoddict, "byte[] buf = SerialUtil.Pack$arg$");
+  out->Print(methoddict, "byte[] buf = SerialUtil.Pack$arg$(");
   GenerateArgList(name, out, args, "$argname$$comma$");
-  out->Print(methoddict, ".build().toByteArray();\n");
+  out->Print(methoddict, ").build().toByteArray();\n");
 
 	//call kernel interface
-  //TODO call kernel interface to make rpc
+  //TODO cache blocking stub for performance?
   out->Print(methoddict, "api.Api.GenericMethodReply retmsg = \n");
   out->Indent();
   out->Print(methoddict, "api.MgmtgrpcServiceGrpc.newBlockingStub(ManagedChannelBuilder.forAddress(\"localhost\", 2000).usePlaintext().build()).genericMethodInvoke(\n");
@@ -434,14 +441,25 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
   out->Print(methoddict, "}\n");
 
   //unpack return value
-  out->Print(methoddict, "return SerialUtil.Unpack$ret$(ret);\n");
+  out->Print(methoddict, "return ");
+  if(inlined) {
+    const FieldDescriptor* fd = ret->field(0);
+    methoddict["capname"] = capitalizeFirst(fd->name());
+    if(fd->is_map()) {
+      out->Print(methoddict, "NOTYETSUPPORTED");
+    } else if(fd->is_repeated()) {
+      out->Print(methoddict, "NOTYETSUPPORTED");
+    } else {
+      out->Print(methoddict, "SerialUtil.Unpack$ret$(ret).$capname$;\n");
+    }
+  } else {
+    out->Print(methoddict, "SerialUtil.Unpack$ret$(ret);\n");
+  }
   out->Outdent();
   out->Print("}\n\n");
 }
 //TODO void returns/args probably don't work
 void GenerateType(string name, Printer* out, const Descriptor* d) {
-  //TODO skip _impl_ if in native language
-  
   StringMap returndict;
   returndict["type"] = d->name();
   out->Print(returndict, "public static class $type$");

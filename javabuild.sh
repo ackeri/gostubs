@@ -21,7 +21,7 @@ echo "building generated code" && \
 #cd javaoutput && \
 javac -cp "/usr/share/java/*:javalib/*:javaoutput/" javaoutput/test.java && \
 echo "running generated code" && \
-java -cp ".:./*" test && \
+java -cp "/usr/share/java/*:javalib/*:javaoutput/" test && \
 
 echo "done"
 

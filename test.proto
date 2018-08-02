@@ -38,7 +38,7 @@ message _impl_Testobj {
 }
 
 message _impl_Childobj {
-  _impl_Testobj parent = 1;
+  int32 fielda = 1;
   int32 fieldb = 2;
 }
 
