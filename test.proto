@@ -16,6 +16,8 @@ service _method_Testobj {
   rpc funcnone (empty) returns (empty) {}
 
   rpc funchard (Testobj) returns (Testobj) {}
+
+  rpc funceverything (dense) returns (dense) {}
 }
 
 service _method_Childobj {
@@ -63,4 +65,25 @@ message Testobj_func3_arg {
 
 message empty {
 
+}
+
+message dense {
+  double d = 1;
+  float f = 2;
+  int32 i = 3;
+  int64 l = 4;
+  bool b = 5;
+  string s = 6;
+  bytes bys = 7;
+  repeated double ds = 8;
+  repeated float fs = 9;
+  repeated int32 is = 10;
+  repeated int64 ls = 11;
+  repeated bool bs = 12;
+  repeated string ss = 13;
+  map<int32, int64> itol = 17;
+  map<int64, bool> ltob = 18;
+  map<bool, string> btos = 19;
+  map<string, int32> stoi = 20;
+  //map key cannot be float/double, bytes or message
 }

@@ -21,14 +21,15 @@ typedef map<string, string> StringMap;
 
 string capitalizeFirst(string s) {
   s[0] = toupper(s[0]);
-	//TODO remove _ and capitalize
+	//TODO remove _ and capitalize next letter
+  //protoc java doesn't seem to be doing what the spec says?
   return s;
 }
 
 
-//TODO check input is not reserved keyword in java
 //TODO check name compatability with java->proto conversion tool
 //TODO java doesn't support unsigned int types
+//TODO we don't support java[] types in anyway
 
 // Map from protobuf type (from fielddescriptor)
 // to in language type for primitives
@@ -44,7 +45,7 @@ map<FieldDescriptor::Type,string> typenames = {
   {FieldDescriptor::Type::TYPE_STRING, "String"},
   {FieldDescriptor::Type::TYPE_GROUP, "(DEPRECEATED PROTOBUF TYPE GROUP)"},
   {FieldDescriptor::Type::TYPE_MESSAGE, "HANDLED_ELSEWHERE_MESSAGE"}, 
-  {FieldDescriptor::Type::TYPE_BYTES, "char[]"},  //TODO: verify this is correct
+  {FieldDescriptor::Type::TYPE_BYTES, "byte[]"}, //TODO not supported in list or map
   {FieldDescriptor::Type::TYPE_UINT32, "int"},
   {FieldDescriptor::Type::TYPE_ENUM, "TODO_ENUM"}, //TODO
   {FieldDescriptor::Type::TYPE_SFIXED32, "int"},
@@ -66,7 +67,7 @@ map<FieldDescriptor::Type,string> boxtypenames = {
   {FieldDescriptor::Type::TYPE_STRING, "String"},
   {FieldDescriptor::Type::TYPE_GROUP, "(DEPRECEATED PROTOBUF TYPE GROUP)"},
   {FieldDescriptor::Type::TYPE_MESSAGE, "HANDLED_ELSEWHERE_MESSAGE"},
-  {FieldDescriptor::Type::TYPE_BYTES, "char[]"},  //TODO: verify this is correct
+  {FieldDescriptor::Type::TYPE_BYTES, "byte[]"}, 
   {FieldDescriptor::Type::TYPE_UINT32, "Integer"},
   {FieldDescriptor::Type::TYPE_ENUM, "TODO_ENUM"}, //TODO
   {FieldDescriptor::Type::TYPE_SFIXED32, "Integer"},
@@ -248,7 +249,7 @@ void GeneratePack(string package, Printer* out, const Descriptor* d) {
 					out->Print(packdict, "msg.put$capname$(Pack$ftype$(val));\n");
 					out->Outdent();
 					out->Print("}\n");
-				} else {
+        } else {
 					packdict["ftype"] = capitalizeFirst(fieldmessage->name());
 					out->Print(packdict, "msg.set$capname$(Pack$ftype$(");
           const char* format = (packdict["argname"].append(".$argname$$comma$")).c_str();
@@ -256,8 +257,10 @@ void GeneratePack(string package, Printer* out, const Descriptor* d) {
           out->Print(packdict, "));\n");
 				}
 			} else { //we can manually pack primitives
-				if(fd->is_repeated()) {
+				if(fd->is_repeated() && FieldDescriptor::Type::TYPE_BYTES) {
 					out->Print(packdict, "msg.addAll$capname$($argname$);\n");
+				} else if(fd->type() == FieldDescriptor::Type::TYPE_BYTES) {
+          out->Print(packdict, "msg.set$capname$(ByteString.copyFrom($argname$));\n");
 				} else {
 					out->Print(packdict, "msg.set$capname$($argname$);\n");
 				}
@@ -308,7 +311,7 @@ void GenerateUnpack(string package, Printer* out, const Descriptor* d) {
     for(int i = 0; i < d->field_count(); ++i) {
       const FieldDescriptor* fd = d->field(i);
       unpackdict["rettype"] = GetJavaType(package, fd);
-      unpackdict["retname"] = "." + fd->name();
+      unpackdict["retname"] = fd->name();
       unpackdict["capname"] = capitalizeFirst(fd->name());
 
       if(fd->is_map()) {
@@ -322,11 +325,11 @@ void GenerateUnpack(string package, Printer* out, const Descriptor* d) {
         unpackdict["valuetype"] = GetJavaBoxType(package, value);
         unpackdict["invaluetype"] = (value->message_type() ? package + "." + unpackdict["valuename"]: unpackdict["valuetype"]); 
 
-        out->Print(unpackdict, "ret$retname$ = new HashMap<$keytype$, $valuetype$>();\n");
-        out->Print(unpackdict, "Map<$inkeytype$, $invaluetype$> inmap = in.get$capname$Map();\n");
-        out->Print(unpackdict, "for($inkeytype$ key : inmap.keySet()) {;\n");
+        out->Print(unpackdict, "ret.$retname$ = new HashMap<$keytype$, $valuetype$>();\n");
+        out->Print(unpackdict, "Map<$inkeytype$, $invaluetype$> in$retname$ = in.get$capname$Map();\n");
+        out->Print(unpackdict, "for($inkeytype$ key : in$retname$.keySet()) {;\n");
         out->Indent();
-        out->Print(unpackdict, "ret$retname$.put(");
+        out->Print(unpackdict, "ret.$retname$.put(");
         if(key->message_type()) {
           out->Print(unpackdict, "Unpack$keyname$(key)");
         } else {
@@ -334,9 +337,9 @@ void GenerateUnpack(string package, Printer* out, const Descriptor* d) {
         }
         out->Print(unpackdict, ", ");
         if(value->message_type()) {
-          out->Print(unpackdict, "Unpack$valuename$(inmap.get(key))");
+          out->Print(unpackdict, "Unpack$valuename$(in$retname$.get(key))");
         } else {
-          out->Print(unpackdict, "inmap.get(key)");
+          out->Print(unpackdict, "in$retname$.get(key)");
         }
         out->Print(unpackdict, ");\n");
         out->Outdent();
@@ -344,11 +347,11 @@ void GenerateUnpack(string package, Printer* out, const Descriptor* d) {
       } else if(fd->is_repeated()) {
         unpackdict["ftype"] = GetJavaBoxType(package, fd);
 
-        out->Print(unpackdict, "ret$retname$ = new ArrayList<$ftype$>();\n");
+        out->Print(unpackdict, "ret.$retname$ = new ArrayList<$ftype$>();\n");
         out->Print(unpackdict, "for($ftype$ value : in.get$capname$List()) {\n");
         out->Indent();
 
-        out->Print(unpackdict, "ret$retname$.add(");
+        out->Print(unpackdict, "ret.$retname$.add(");
         if(fd->message_type()) {
             out->Print(unpackdict, "Unpack$ftype$(value)");
         } else {
@@ -359,10 +362,12 @@ void GenerateUnpack(string package, Printer* out, const Descriptor* d) {
         out->Outdent();
         out->Print(unpackdict, "}\n");
       } else {
-        out->Print(unpackdict, "ret$retname$ = ");
+        out->Print(unpackdict, "ret.$retname$ = ");
         if(fd->message_type()) {
           unpackdict["fname"] = fd->message_type()->name();
           out->Print(unpackdict, "Unpack$fname$(in.get$capname$())");
+				} else if(fd->type() == FieldDescriptor::Type::TYPE_BYTES) {
+          out->Print(unpackdict, "in.get$capname$().toByteArray()");
         } else {
           out->Print(unpackdict, "in.get$capname$()");
         }
@@ -428,7 +433,7 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
   out->Print(methoddict, ".setObjId(Long.toString(oid))\n");
   out->Print(methoddict, ".setSapphireObjName(\"$serv$\")\n");
   out->Print(methoddict, ".setFuncName(\"$method$\")\n");
-  out->Print(methoddict, ".setParams(com.google.protobuf.ByteString.copyFrom(buf))\n");
+  out->Print(methoddict, ".setParams(ByteString.copyFrom(buf))\n");
   out->Print(methoddict, ".build()\n");
   out->Outdent();
   out->Print(methoddict, ");\n");
@@ -465,7 +470,7 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
   out->Outdent();
   out->Print("}\n\n");
 }
-//TODO void returns/args probably don't work
+
 void GenerateType(string name, Printer* out, const Descriptor* d) {
   StringMap returndict;
   returndict["type"] = d->name();
@@ -501,7 +506,11 @@ void JavaSapphireGenerator::GenerateSapphireStubs(GeneratorContext* context, str
   ZeroCopyOutputStream* utilzcos = context->Open("SerialUtil.java");
   Printer* util = new Printer(utilzcos, '$');
 
-  util->Print("import java.util.*;\n\n");
+  util->Print("import java.util.List;\n");
+  util->Print("import java.util.ArrayList;\n");
+  util->Print("import java.util.Map;\n");
+  util->Print("import java.util.HashMap;\n");
+  util->Print("import com.google.protobuf.ByteString;\n\n");
   util->Print("public class SerialUtil {\n\n");
   util->Indent();
   std::set<const Descriptor*> generated;
@@ -526,10 +535,15 @@ void JavaSapphireGenerator::GenerateSapphireStubs(GeneratorContext* context, str
     ZeroCopyOutputStream* zcos = context->Open(servicename + "_stub.java");; 
     auto out = new Printer(zcos, '$');
 
-    //TODO Package and imports
-    out->Print("import java.util.*;\n");
+    //TODO Package statement from .proto
+    out->Print("import java.util.List;\n");
+    out->Print("import java.util.ArrayList;\n");
+    out->Print("import java.util.Map;\n");
+    out->Print("import java.util.HashMap;\n");
+    out->Print("import com.google.protobuf.ByteString;\n");
+    //TODO limit imports
     out->Print("import api.*;\n");
-    out->Print("import io.grpc.*;\n");
+    out->Print("import io.grpc.*;\n\n");
 	
     // Documentation
 	  SourceLocation sl;
