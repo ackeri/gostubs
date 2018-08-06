@@ -454,17 +454,11 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
     //unpack return value
     out->Print(methoddict, "return ");
     if(inlined) {
-        const FieldDescriptor* fd = ret->field(0);
-        methoddict["capname"] = capitalizeFirst(fd->name());
-        if(fd->is_map()) {
-        out->Print(methoddict, "NOTYETSUPPORTED");
-        } else if(fd->is_repeated()) {
-        out->Print(methoddict, "NOTYETSUPPORTED");
-        } else {
-        out->Print(methoddict, "SerialUtil.Unpack$ret$(ret).$capname$;\n");
-        }
+      const FieldDescriptor* fd = ret->field(0);
+      methoddict["retname"] = fd->name();
+      out->Print(methoddict, "SerialUtil.Unpack$ret$(ret).$retname$;\n");
     } else {
-        out->Print(methoddict, "SerialUtil.Unpack$ret$(ret);\n");
+      out->Print(methoddict, "SerialUtil.Unpack$ret$(ret);\n");
     }
   }
   out->Outdent();

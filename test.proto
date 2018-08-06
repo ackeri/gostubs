@@ -18,6 +18,10 @@ service _method_Testobj {
   rpc funchard (Testobj) returns (Testobj) {}
 
   rpc funceverything (dense) returns (dense) {}
+
+  rpc funcinlineprim (inlineprim) returns (inlineprim) {}
+  rpc funcinlinelist (inlinelist) returns (inlinelist) {}
+  rpc funcinlinemap (inlinemap) returns (inlinemap) {}
 }
 
 service _method_Childobj {
@@ -85,5 +89,19 @@ message dense {
   map<int64, bool> ltob = 18;
   map<bool, string> btos = 19;
   map<string, int32> stoi = 20;
-  //map key cannot be float/double, bytes or message
+  map<int32, float> itof = 21;
+  map<int32, double> itod = 22;
+  //map key cannot be float/double, bytes or message in protobuf
+}
+
+message inlineprim {
+  int32 ival = 1;
+}
+
+message inlinelist {
+  repeated int32 ivallst = 1;
+}
+
+message inlinemap {
+  map<int32, int32> ivalmap = 1;
 }
