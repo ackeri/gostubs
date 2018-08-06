@@ -19,7 +19,7 @@ protoc --java_sapphire_out=javaoutput test.proto && \
 #build and run java test
 echo "building generated code" && \
 #cd javaoutput && \
-javac -cp "/usr/share/java/*:javalib/*:javaoutput/" javaoutput/test.java && \
+javac -cp "/usr/share/java/*:javalib/*:javaoutput/" javaoutput/test.java javaoutput/api/Api.java javaoutput/api/MgmtgrpcServiceGrpc.java && \
 echo "running generated code" && \
 java -cp "/usr/share/java/*:javalib/*:javaoutput/" test && \
 

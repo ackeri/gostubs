@@ -13,6 +13,8 @@ service _method_Testobj {
 	comment on func3 */
 	rpc func3 (Testobj_func3_arg) returns (Testobj_func1_arg) {}
 
+  rpc funcnone (empty) returns (empty) {}
+
   rpc funchard (Testobj) returns (Testobj) {}
 }
 
@@ -57,4 +59,8 @@ message Testobj_func2_arg {
 
 message Testobj_func3_arg {
 	Testobj_func2_arg Nested = 1;
+}
+
+message empty {
+
 }

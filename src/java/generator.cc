@@ -393,8 +393,11 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
 
   // Function Header
   auto ret = method->output_type();
+  bool voidret = ret->field_count() == 0;
   bool inlined = ret->field_count() == 1;
-  if(inlined) {
+  if(voidret) {
+    methoddict["rettype"] = "void";
+  } else if(inlined) {
     methoddict["rettype"] = GetJavaType(name, ret->field(0));
   } else {
     methoddict["rettype"] = "SerialUtil." + ret->name();
@@ -416,7 +419,9 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
 
 	//call kernel interface
   //TODO cache blocking stub for performance?
-  out->Print(methoddict, "api.Api.GenericMethodReply retmsg = \n");
+  if(!voidret) {
+    out->Print(methoddict, "api.Api.GenericMethodReply retmsg = \n");
+  }
   out->Indent();
   out->Print(methoddict, "api.MgmtgrpcServiceGrpc.newBlockingStub(ManagedChannelBuilder.forAddress(\"localhost\", 2000).usePlaintext().build()).genericMethodInvoke(\n");
   out->Print(methoddict, "api.Api.GenericMethodRequest.newBuilder()\n");
@@ -427,33 +432,35 @@ void GenerateMethod(string name, Printer* out, const MethodDescriptor* method) {
   out->Print(methoddict, ".build()\n");
   out->Outdent();
   out->Print(methoddict, ");\n");
-  methoddict["ret"] = ret->name();
 
-  out->Print(methoddict, "$package$.$ret$ ret;\n");
-  out->Print(methoddict, "try {\n");
-  out->Indent();
-  out->Print(methoddict, "ret = $package$.$ret$.parseFrom(retmsg.getRet());\n");
-  out->Outdent();
-  out->Print(methoddict, "} catch(com.google.protobuf.InvalidProtocolBufferException ex) {\n");
-  out->Indent();
-  out->Print(methoddict, "throw new ClassCastException(ex.getMessage());\n");
-  out->Outdent();
-  out->Print(methoddict, "}\n");
+  if(!voidret) {
+    methoddict["ret"] = ret->name();
+    out->Print(methoddict, "$package$.$ret$ ret;\n");
+    out->Print(methoddict, "try {\n");
+    out->Indent();
+    out->Print(methoddict, "ret = $package$.$ret$.parseFrom(retmsg.getRet());\n");
+    out->Outdent();
+    out->Print(methoddict, "} catch(com.google.protobuf.InvalidProtocolBufferException ex) {\n");
+    out->Indent();
+    out->Print(methoddict, "throw new ClassCastException(ex.getMessage());\n");
+    out->Outdent();
+    out->Print(methoddict, "}\n");
 
-  //unpack return value
-  out->Print(methoddict, "return ");
-  if(inlined) {
-    const FieldDescriptor* fd = ret->field(0);
-    methoddict["capname"] = capitalizeFirst(fd->name());
-    if(fd->is_map()) {
-      out->Print(methoddict, "NOTYETSUPPORTED");
-    } else if(fd->is_repeated()) {
-      out->Print(methoddict, "NOTYETSUPPORTED");
+    //unpack return value
+    out->Print(methoddict, "return ");
+    if(inlined) {
+        const FieldDescriptor* fd = ret->field(0);
+        methoddict["capname"] = capitalizeFirst(fd->name());
+        if(fd->is_map()) {
+        out->Print(methoddict, "NOTYETSUPPORTED");
+        } else if(fd->is_repeated()) {
+        out->Print(methoddict, "NOTYETSUPPORTED");
+        } else {
+        out->Print(methoddict, "SerialUtil.Unpack$ret$(ret).$capname$;\n");
+        }
     } else {
-      out->Print(methoddict, "SerialUtil.Unpack$ret$(ret).$capname$;\n");
+        out->Print(methoddict, "SerialUtil.Unpack$ret$(ret);\n");
     }
-  } else {
-    out->Print(methoddict, "SerialUtil.Unpack$ret$(ret);\n");
   }
   out->Outdent();
   out->Print("}\n\n");
